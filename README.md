@@ -5,6 +5,8 @@
 
 > 当前版本：v0.1（单机 / 局域网形态，无需数据库服务、无需 Docker、无需外网）
 
+**技术栈**：React 19 + antd v6 + Tailwind CSS v4 + Vite ｜ Fastify 5 + TypeScript ｜ SQLite（node:sqlite）｜ 内置 Python 运行时
+
 ---
 
 ## 界面预览
@@ -251,7 +253,7 @@ yby/
 ├─ src/                     # React 前端
 │  ├─ pages/teacher/        # 考试列表、试卷、批改、单份批改
 │  ├─ pages/student/        # 考试列表、作答、成绩
-│  ├─ ui.tsx / styles.css   # 组件与设计系统
+│  ├─ ui.tsx / styles.css   # antd 主题、状态标签与全局样式
 │  └─ api.ts / auth.tsx / format.ts
 ├─ scripts/
 │  ├─ make_template.py      # 生成 Word 模板

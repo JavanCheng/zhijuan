@@ -1,10 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  Input,
+  Modal,
+  Radio,
+  Select,
+  Space,
+  Spin,
+  Typography,
+} from 'antd';
+import { ArrowLeftOutlined, ClockCircleOutlined, CodeOutlined } from '@ant-design/icons';
 import { api, post, put } from '../../api';
 import type { QuestionStudent, StudentAnswer, StudentExamPage } from '../../../shared/types';
 import { isAnswered } from '../../../shared/grading';
-import { Alert, Button, Icon, Modal, Spinner, TypeBadge } from '../../ui';
+import { TypeTag } from '../../ui';
 import { formatCountdown, scoreText } from '../../format';
+
+const { Text } = Typography;
+const { TextArea } = Input;
 
 const PY_TEMPLATE = `# 从标准输入读取数据，把结果打印到标准输出
 def main():
@@ -15,86 +32,75 @@ main()
 `;
 
 function QuestionInput({
-  q,
+  question,
   value,
   onChange,
 }: {
-  q: QuestionStudent;
+  question: QuestionStudent;
   value: StudentAnswer | undefined;
   onChange: (next: StudentAnswer) => void;
 }) {
-  if (q.type === 'single') {
+  if (question.type === 'single') {
     return (
-      <div className="options">
-        {q.options.map((o) => (
-          <button
-            key={o.key}
-            type="button"
-            className={`option ${value?.key === o.key ? 'selected' : ''}`}
-            onClick={() => onChange({ key: o.key })}
-          >
-            <span className="key">{o.key}</span>
-            <span className="text">{o.text}</span>
-          </button>
+      <Radio.Group
+        className="option-list grid w-full gap-3"
+        value={value?.key}
+        onChange={(e) => onChange({ key: e.target.value })}
+      >
+        {question.options.map((option) => (
+          <Radio key={option.key} value={option.key} style={{ margin: 0 }}>
+            <span className="mr-2 font-semibold text-[#39445c]">{option.key}</span>
+            {option.text}
+          </Radio>
         ))}
-      </div>
+      </Radio.Group>
     );
   }
 
-  if (q.type === 'multiple') {
-    const keys = value?.keys ?? [];
+  if (question.type === 'multiple') {
     return (
-      <div className="options">
-        {q.options.map((o) => {
-          const selected = keys.includes(o.key);
-          return (
-            <button
-              key={o.key}
-              type="button"
-              className={`option ${selected ? 'selected' : ''}`}
-              onClick={() =>
-                onChange({ keys: selected ? keys.filter((k) => k !== o.key) : [...keys, o.key].sort() })
-              }
-            >
-              <span className="key">{o.key}</span>
-              <span className="text">{o.text}</span>
-            </button>
-          );
-        })}
-      </div>
+      <Checkbox.Group
+        className="option-list grid w-full gap-3"
+        value={value?.keys ?? []}
+        onChange={(values) => onChange({ keys: [...(values as string[])].sort() })}
+      >
+        {question.options.map((option) => (
+          <Checkbox key={option.key} value={option.key} style={{ margin: 0 }}>
+            <span className="mr-2 font-semibold text-[#39445c]">{option.key}</span>
+            {option.text}
+          </Checkbox>
+        ))}
+      </Checkbox.Group>
     );
   }
 
-  if (q.type === 'truefalse') {
+  if (question.type === 'truefalse') {
     return (
-      <div className="tf-row">
-        <button
-          type="button"
-          className={`tf-btn ${value?.value === true ? 'selected' : ''}`}
-          onClick={() => onChange({ value: true })}
-        >
+      <Radio.Group
+        optionType="button"
+        buttonStyle="solid"
+        size="large"
+        value={value?.value}
+        onChange={(e) => onChange({ value: e.target.value })}
+      >
+        <Radio.Button value={true} style={{ minWidth: 120, textAlign: 'center' }}>
           正确
-        </button>
-        <button
-          type="button"
-          className={`tf-btn ${value?.value === false ? 'selected' : ''}`}
-          onClick={() => onChange({ value: false })}
-        >
+        </Radio.Button>
+        <Radio.Button value={false} style={{ minWidth: 120, textAlign: 'center' }}>
           错误
-        </button>
-      </div>
+        </Radio.Button>
+      </Radio.Group>
     );
   }
 
-  if (q.type === 'fill') {
-    const blanks = value?.blanks ?? Array.from({ length: q.blanks }, () => '');
+  if (question.type === 'fill') {
+    const blanks = value?.blanks ?? [];
     return (
-      <div className="fills">
-        {Array.from({ length: Math.max(q.blanks, 1) }).map((_, i) => (
-          <div className="fill-row" key={i}>
-            <span className="idx">第 {i + 1} 空</span>
-            <input
-              className="input"
+      <div className="grid gap-3">
+        {Array.from({ length: Math.max(question.blanks, 1) }).map((_, i) => (
+          <div className="flex items-center gap-3" key={i}>
+            <span className="w-14 flex-none text-[12.5px] text-[#7a839a]">第 {i + 1} 空</span>
+            <Input
               value={blanks[i] ?? ''}
               placeholder="填写答案"
               onChange={(e) => {
@@ -109,47 +115,43 @@ function QuestionInput({
     );
   }
 
-  if (q.type === 'short') {
+  if (question.type === 'short') {
     return (
-      <div className="answer-area">
-        <textarea
-          className="textarea"
-          style={{ minHeight: 160 }}
-          placeholder="请在这里作答……"
-          value={value?.text ?? ''}
-          onChange={(e) => onChange({ text: e.target.value })}
-        />
-      </div>
+      <TextArea
+        rows={6}
+        placeholder="请在这里作答……"
+        value={value?.text ?? ''}
+        onChange={(e) => onChange({ text: e.target.value })}
+      />
     );
   }
 
-  // code
-  const languages = q.codeSpec?.languages ?? ['python'];
+  const languages = question.codeSpec?.languages ?? ['python'];
   const language = value?.language ?? languages[0] ?? 'python';
-  const code = value?.code ?? (q.codeSpec?.starterCode || (language === 'python' ? PY_TEMPLATE : ''));
+  const code = value?.code ?? (question.codeSpec?.starterCode || (language === 'python' ? PY_TEMPLATE : ''));
 
   return (
     <div>
-      <div className="code-box">
+      <div className="code-shell">
         <div className="code-bar">
-          <Icon name="code" size={14} />
+          <CodeOutlined />
           <span>代码编辑器</span>
-          <div className="grow" />
+          <span className="flex-1" />
           <span>语言</span>
-          <select
+          <Select
+            size="small"
             value={language}
-            onChange={(e) => onChange({ language: e.target.value, code })}
-          >
-            {languages.map((l) => (
-              <option key={l} value={l}>
-                {l === 'python' ? 'Python 3' : l === 'javascript' ? 'JavaScript' : l}
-              </option>
-            ))}
-          </select>
-          <span className="muted">限时 {q.codeSpec?.timeLimitMs ?? 2000}ms / 测试点</span>
+            style={{ width: 128 }}
+            onChange={(next) => onChange({ language: next, code })}
+            options={languages.map((l) => ({
+              value: l,
+              label: l === 'python' ? 'Python 3' : l === 'javascript' ? 'JavaScript' : l,
+            }))}
+          />
+          <span className="text-[#64748b]">限时 {question.codeSpec?.timeLimitMs ?? 2000}ms / 测试点</span>
         </div>
         <textarea
-          className="editor"
+          className="code-editor"
           spellCheck={false}
           value={code}
           onChange={(e) => onChange({ language, code: e.target.value })}
@@ -164,15 +166,17 @@ function QuestionInput({
         />
       </div>
 
-      {q.sampleCases.length ? (
-        <div className="samples">
-          <div className="muted" style={{ fontSize: 12 }}>样例</div>
-          {q.sampleCases.map((c, i) => (
-            <div className="sample" key={i}>
-              <span className="lbl">{c.label} · 输入</span>
-              {c.stdin || '（无）'}
-              <span className="lbl" style={{ marginTop: 8 }}>{c.label} · 输出</span>
-              {c.expectedStdout}
+      {question.sampleCases.length ? (
+        <div className="mt-4 grid gap-2">
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            样例
+          </Text>
+          {question.sampleCases.map((sample, i) => (
+            <div className="answer-panel" key={i} style={{ fontSize: 12.5 }}>
+              <div className="mb-0.5 text-[11.5px] text-[#7a839a]">{sample.label} · 输入</div>
+              {sample.stdin || '（无）'}
+              <div className="mb-0.5 mt-2 text-[11.5px] text-[#7a839a]">{sample.label} · 输出</div>
+              {sample.expectedStdout}
             </div>
           ))}
         </div>
@@ -290,158 +294,163 @@ export function StudentExam() {
 
   if (!page) {
     return (
-      <div className="page">
-        {error ? <Alert tone="red">{error}</Alert> : <Spinner label="准备试卷…" />}
+      <div className="mx-auto w-full max-w-[1180px] px-6 py-10">
+        {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
       </div>
     );
   }
 
-  const q = page.questions[index];
+  const question = page.questions[index];
   const answeredCount = page.questions.filter((item) => isAnswered(answers[String(item.id)] ?? null)).length;
   const unanswered = page.questions.length - answeredCount;
   const urgent = remaining !== null && remaining < 5 * 60 * 1000;
+  const saveLabel =
+    saving === 'saving' ? '保存中…' : saving === 'saved' ? '已自动保存' : saving === 'error' ? '保存失败' : '自动保存已开启';
 
   return (
     <>
-      <div className="exam-top">
-        <button className="icon-btn" onClick={exit} title="保存并退出">
-          <Icon name="arrow-left" />
-        </button>
-        <div className="title grow">{page.exam.title}</div>
-        <div className={`exam-timer ${urgent ? 'urgent' : ''}`}>
-          <Icon name="clock" size={16} />
-          <span className="clock-box">{remaining === null ? '--:--' : formatCountdown(remaining)}</span>
+      <div className="sticky top-[60px] z-20 border-b border-[#e4e8f2] bg-white">
+        <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center gap-4 px-6 py-3">
+          <Button type="text" icon={<ArrowLeftOutlined />} aria-label="保存并退出" onClick={exit} />
+          <div className="text-[15.5px] font-semibold">{page.exam.title}</div>
+          <div className="ml-auto flex flex-wrap items-center gap-4">
+            <span className={`exam-timer ${urgent ? 'urgent' : ''}`}>
+              <ClockCircleOutlined />
+              {remaining === null ? '--:--' : formatCountdown(remaining)}
+            </span>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {saveLabel}
+            </Text>
+            <Button type="primary" onClick={() => setConfirmOpen(true)}>
+              提交试卷
+            </Button>
+          </div>
         </div>
-        <div className="save-state">
-          {saving === 'saving'
-            ? '保存中…'
-            : saving === 'saved'
-              ? '已自动保存'
-              : saving === 'error'
-                ? '保存失败，请检查网络'
-                : '自动保存已开启'}
-        </div>
-        <Button onClick={() => setConfirmOpen(true)}>提交试卷</Button>
       </div>
 
-      <div className="exam-layout">
+      <div className="mx-auto grid w-full max-w-[1180px] items-start gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div>
-          {error ? <Alert tone="red">{error}</Alert> : null}
+          {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
-          <div className="question-card">
-            <div className="q-head">
-              <span className="q-num">第 {index + 1} 题</span>
-              <TypeBadge type={q.type} />
-              <span className="q-score">本题 {scoreText(q.score, 2)} 分</span>
+          <Card>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-lg bg-[#eef2ff] px-2.5 py-1 text-[12.5px] font-semibold text-[#1f3fae]">
+                第 {index + 1} 题
+              </span>
+              <TypeTag type={question.type} />
+              <span className="ml-auto text-[13px] text-[#7a839a]">本题 {scoreText(question.score, 2)} 分</span>
             </div>
 
-            <div className="stem" dangerouslySetInnerHTML={{ __html: q.stemHtml }} />
+            <div className="stem" dangerouslySetInnerHTML={{ __html: question.stemHtml }} />
 
-            <QuestionInput
-              q={q}
-              value={answers[String(q.id)]}
-              onChange={(next) => {
-                dirtyRef.current = true;
-                setAnswers((prev) => ({ ...prev, [String(q.id)]: next }));
-              }}
-            />
-          </div>
+            <div className="mt-4">
+              <QuestionInput
+                question={question}
+                value={answers[String(question.id)]}
+                onChange={(next) => {
+                  dirtyRef.current = true;
+                  setAnswers((prev) => ({ ...prev, [String(question.id)]: next }));
+                }}
+              />
+            </div>
+          </Card>
 
-          <div className="exam-foot">
-            <Button
-              variant="ghost"
-              disabled={index === 0}
-              onClick={() => setIndex((i) => Math.max(0, i - 1))}
-            >
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <Button disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}>
               上一题
             </Button>
-            <span className="muted" style={{ fontSize: 12.5 }}>
+            <Text type="secondary" style={{ fontSize: 12.5 }}>
               已答 {answeredCount} / {page.questions.length} 题
-            </span>
+            </Text>
             {index === page.questions.length - 1 ? (
-              <Button onClick={() => setConfirmOpen(true)}>检查并提交</Button>
+              <Button type="primary" onClick={() => setConfirmOpen(true)}>
+                检查并提交
+              </Button>
             ) : (
-              <Button onClick={() => setIndex((i) => Math.min(page.questions.length - 1, i + 1))}>
+              <Button type="primary" onClick={() => setIndex((i) => Math.min(page.questions.length - 1, i + 1))}>
                 下一题
               </Button>
             )}
           </div>
         </div>
 
-        <aside className="question-nav">
-          <div className="nav-card">
-            <h4>
-              答题卡
-              <span className="muted" style={{ fontWeight: 400 }}>
-                {answeredCount}/{page.questions.length}
+        <aside className="grid content-start gap-4">
+          <Card
+            size="small"
+            title={
+              <span className="flex items-center justify-between">
+                <span>答题卡</span>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {answeredCount}/{page.questions.length}
+                </Text>
               </span>
-            </h4>
-            <div className="nav-grid">
-              {page.questions.map((item, i) => (
-                <button
-                  key={item.id}
-                  className={`nav-cell ${isAnswered(answers[String(item.id)] ?? null) ? 'answered' : ''} ${
-                    i === index ? 'current' : ''
-                  }`}
-                  onClick={() => setIndex(i)}
-                >
-                  {i + 1}
-                </button>
-              ))}
+            }
+          >
+            <div className="grid grid-cols-6 gap-2">
+              {page.questions.map((item, i) => {
+                const answered = isAnswered(answers[String(item.id)] ?? null);
+                const active = i === index;
+                return (
+                  <Button
+                    key={item.id}
+                    size="small"
+                    type={active ? 'primary' : 'default'}
+                    className={!active && answered ? '!border-[#c4d2f8] !bg-[#eef2ff] !text-[#1f3fae]' : ''}
+                    onClick={() => setIndex(i)}
+                  >
+                    {i + 1}
+                  </Button>
+                );
+              })}
             </div>
-            <div className="nav-legend">
-              <span>
-                <i style={{ background: 'var(--brand-soft)', border: '1px solid #c4d2f8' }} /> 已答
+            <div className="mt-3 flex flex-wrap gap-3 text-[11.5px] text-[#7a839a]">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-[#c4d2f8] bg-[#eef2ff]" /> 已答
               </span>
-              <span>
-                <i style={{ background: '#fff', border: '1px solid var(--line-strong)' }} /> 未答
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-[#d3daea] bg-white" /> 未答
               </span>
             </div>
-          </div>
+          </Card>
 
-          <div className="nav-card">
-            <h4>提交前检查</h4>
-            <div className="grade-line">
-              <span>题目总数</span>
-              <strong>{page.questions.length}</strong>
+          <Card size="small" title="提交前检查">
+            <div className="grid gap-2 text-[12.5px]">
+              <div className="flex justify-between">
+                <Text type="secondary">题目总数</Text>
+                <strong>{page.questions.length}</strong>
+              </div>
+              <div className="flex justify-between">
+                <Text type="secondary">已作答</Text>
+                <strong>{answeredCount}</strong>
+              </div>
+              <div className="flex justify-between">
+                <Text type="secondary">未作答</Text>
+                <strong style={{ color: unanswered ? '#d48806' : undefined }}>{unanswered}</strong>
+              </div>
             </div>
-            <div className="grade-line">
-              <span>已作答</span>
-              <strong>{answeredCount}</strong>
-            </div>
-            <div className="grade-line">
-              <span>未作答</span>
-              <strong style={{ color: unanswered ? 'var(--amber)' : undefined }}>{unanswered}</strong>
-            </div>
-            <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.7, marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 11.5, lineHeight: 1.7 }}>
               提交后不能修改，题目与答案会自动进入教师批改台。
-            </div>
-          </div>
+            </Text>
+          </Card>
         </aside>
       </div>
 
       <Modal
         open={confirmOpen}
         title="确认提交试卷？"
-        subtitle={`共 ${page.questions.length} 题，已作答 ${answeredCount} 题。`}
-        onClose={() => setConfirmOpen(false)}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setConfirmOpen(false)}>
-              再检查一下
-            </Button>
-            <Button loading={submitting} onClick={() => void doSubmit()}>
-              确认提交
-            </Button>
-          </>
-        }
+        okText="确认提交"
+        cancelText="再检查一下"
+        confirmLoading={submitting}
+        onOk={() => void doSubmit()}
+        onCancel={() => setConfirmOpen(false)}
       >
+        <p className="mb-3 text-[13px] text-[#5b6479]">
+          共 {page.questions.length} 题，已作答 {answeredCount} 题。
+        </p>
         {unanswered > 0 ? (
-          <Alert tone="amber">
-            还有 {unanswered} 题未作答，提交后这些题将按 0 分计入。仍要提交吗？
-          </Alert>
+          <Alert type="warning" showIcon message={`还有 ${unanswered} 题未作答，提交后这些题将按 0 分计入。`} />
         ) : (
-          <Alert tone="green">所有题目均已作答，提交后自动进入批改流程。</Alert>
+          <Alert type="success" showIcon message="所有题目均已作答，提交后自动进入批改流程。" />
         )}
       </Modal>
     </>

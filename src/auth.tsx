@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
+import { Spin } from 'antd';
 import { api, post } from './api';
 
 export interface User {
@@ -54,16 +55,17 @@ export function homeOf(role: 'teacher' | 'student'): string {
   return role === 'teacher' ? '/teacher' : '/student';
 }
 
+function LoadingScreen() {
+  return (
+    <div className="flex h-screen items-center justify-center">
+      <Spin size="large" />
+    </div>
+  );
+}
+
 export function RequireRole({ role, children }: { role: 'teacher' | 'student'; children: ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) {
-    return (
-      <div className="boot-screen">
-        <div className="spinner" />
-        <p>正在加载…</p>
-      </div>
-    );
-  }
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   if (user.role !== role) return <Navigate to={homeOf(user.role)} replace />;
   return <>{children}</>;
@@ -71,7 +73,7 @@ export function RequireRole({ role, children }: { role: 'teacher' | 'student'; c
 
 export function Landing() {
   const { user, loading } = useAuth();
-  if (loading) return <div className="boot-screen"><div className="spinner" /></div>;
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   return <Navigate to={homeOf(user.role)} replace />;
 }

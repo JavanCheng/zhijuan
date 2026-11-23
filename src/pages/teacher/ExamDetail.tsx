@@ -1,25 +1,60 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  Alert,
+  App as AntApp,
+  Button,
+  Card,
+  Empty,
+  InputNumber,
+  Modal,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Typography,
+  Upload,
+} from 'antd';
+import type { TableProps, UploadProps } from 'antd';
+import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined } from '@ant-design/icons';
 import { api, del, patch, post, put } from '../../api';
 import type { ExamDetailTeacher, ImportResult, QuestionTeacher } from '../../../shared/types';
-import { Alert, Button, Card, EmptyState, ExamStatusBadge, Icon, Modal, Spinner, TypeBadge } from '../../ui';
+import { ExamStatusTag, TypeTag } from '../../ui';
 import { formatAnswerSpec, scoreText, stripHtml } from '../../format';
+
+const { Title, Text } = Typography;
+
+function ScoreCell({ question, onSave }: { question: QuestionTeacher; onSave: (value: number) => void }) {
+  const [value, setValue] = useState<number | null>(question.score);
+  return (
+    <InputNumber
+      size="small"
+      min={0.5}
+      max={200}
+      step={0.5}
+      value={value}
+      style={{ width: 80 }}
+      onChange={setValue}
+      onBlur={() => {
+        if (value != null && value !== question.score) onSave(value);
+      }}
+    />
+  );
+}
 
 export function TeacherExam() {
   const { id } = useParams();
   const examId = Number(id);
   const navigate = useNavigate();
+  const { modal } = AntApp.useApp();
 
   const [exam, setExam] = useState<ExamDetailTeacher | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
-
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -52,16 +87,21 @@ export function TeacherExam() {
     }
   }
 
-  function onFile(file: File | undefined) {
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.docx')) {
-      setError('只支持 .docx 格式，请用 Word 另存为 .docx 后再上传');
-      return;
-    }
-    const form = new FormData();
-    form.append('file', file);
-    void runImport(form);
-  }
+  const uploadProps: UploadProps = {
+    accept: '.docx',
+    showUploadList: false,
+    disabled: importing,
+    customRequest: async ({ file, onSuccess, onError }) => {
+      const form = new FormData();
+      form.append('file', file as File);
+      try {
+        await runImport(form);
+        onSuccess?.({});
+      } catch (err) {
+        onError?.(err as Error);
+      }
+    },
+  };
 
   async function confirmImport() {
     if (!importResult || !exam) return;
@@ -94,53 +134,64 @@ export function TeacherExam() {
     }
   }
 
-  async function close() {
-    if (!window.confirm('结束后学生将无法继续作答，确定结束考试吗？')) return;
-    setBusy(true);
-    try {
-      await post(`/api/teacher/exams/${examId}/close`);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败');
-    } finally {
-      setBusy(false);
-    }
+  function closeExam() {
+    modal.confirm({
+      title: '结束考试',
+      content: '结束后学生将无法继续作答，确定结束吗？',
+      okText: '结束考试',
+      cancelText: '取消',
+      onOk: async () => {
+        await post(`/api/teacher/exams/${examId}/close`);
+        await load();
+      },
+    });
   }
 
-  async function removeExam() {
-    if (!window.confirm('删除后不可恢复，确定删除这场考试吗？')) return;
-    try {
-      await del(`/api/teacher/exams/${examId}`);
-      navigate('/teacher', { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '删除失败');
-    }
+  function removeExam() {
+    modal.confirm({
+      title: '删除考试',
+      content: '删除后不可恢复，确定删除这场考试吗？',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        await del(`/api/teacher/exams/${examId}`);
+        navigate('/teacher', { replace: true });
+      },
+    });
   }
 
-  async function updateScore(q: QuestionTeacher, value: number) {
-    if (!Number.isFinite(value) || value <= 0 || value === q.score) return;
+  async function updateScore(question: QuestionTeacher, value: number) {
     try {
-      await patch(`/api/teacher/questions/${q.id}`, { score: value });
+      await patch(`/api/teacher/questions/${question.id}`, { score: value });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存分值失败');
     }
   }
 
-  async function removeQuestion(q: QuestionTeacher) {
-    if (!window.confirm(`确定删除第 ${q.seq} 题吗？`)) return;
-    try {
-      await del(`/api/teacher/questions/${q.id}`);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '删除失败');
-    }
+  function removeQuestion(question: QuestionTeacher) {
+    modal.confirm({
+      title: `删除第 ${question.seq} 题`,
+      content: '删除后题号会自动重排，确定删除吗？',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await del(`/api/teacher/questions/${question.id}`);
+          await load();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : '删除失败');
+        }
+      },
+    });
   }
 
   if (!exam) {
     return (
-      <div className="page">
-        {error ? <Alert tone="red">{error}</Alert> : <Spinner label="加载试卷中…" />}
+      <div className="mx-auto w-full max-w-[1240px] px-6 py-7 lg:px-9">
+        {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
       </div>
     );
   }
@@ -148,255 +199,198 @@ export function TeacherExam() {
   const hasQuestions = exam.questions.length > 0;
   const errorCount = importResult?.counts.errors ?? 0;
 
+  const columns: TableProps<QuestionTeacher>['columns'] = [
+    { title: '题号', dataIndex: 'seq', width: 64 },
+    { title: '题型', dataIndex: 'type', width: 88, render: (_, q) => <TypeTag type={q.type} /> },
+    {
+      title: '题干',
+      dataIndex: 'stemHtml',
+      render: (_, q) => <div className="max-w-[460px] text-[13.5px] leading-6">{stripHtml(q.stemHtml).slice(0, 72)}</div>,
+    },
+    {
+      title: '答案 / 测试点',
+      width: 170,
+      render: (_, q) => (
+        <Text type="secondary" style={{ fontSize: 12.5, whiteSpace: 'pre-wrap' }}>
+          {q.type === 'code'
+            ? `${q.testCases.length} 个测试点`
+            : q.type === 'short'
+              ? '人工评分'
+              : formatAnswerSpec(q.type, q.answer, q.options).split('\n')[0]}
+        </Text>
+      ),
+    },
+    {
+      title: '分值',
+      width: 100,
+      render: (_, q) => <ScoreCell question={q} onSave={(value) => updateScore(q, value)} />,
+    },
+    {
+      title: '',
+      width: 56,
+      render: (_, q) => (
+        <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeQuestion(q)} />
+      ),
+    },
+  ];
+
   return (
-    <div className="page">
-      <div className="page-head">
-        <div className="grow">
-          <Link to="/teacher" className="row muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-            <Icon name="arrow-left" size={15} /> 返回考试列表
-          </Link>
-          <h1 className="page-title">{exam.title}</h1>
-          <div className="row" style={{ marginTop: 8 }}>
-            <ExamStatusBadge status={exam.status} />
-            <span className="muted" style={{ fontSize: 12.5 }}>
+    <div className="mx-auto w-full max-w-[1240px] px-6 py-7 lg:px-9">
+      <Button type="link" icon={<ArrowLeftOutlined />} className="!mb-2 !px-0" onClick={() => navigate('/teacher')}>
+        返回考试列表
+      </Button>
+
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Title level={3} style={{ marginBottom: 6 }}>
+            {exam.title}
+          </Title>
+          <Space size={10} wrap>
+            <ExamStatusTag status={exam.status} />
+            <Text type="secondary" style={{ fontSize: 12.5 }}>
               共 {exam.questionCount} 题 · 合计 {exam.totalScore} 分 · {exam.submissionCount} 人提交
-            </span>
-          </div>
+            </Text>
+          </Space>
         </div>
-        <div className="page-actions">
+        <Space>
           {exam.status === 'draft' ? (
             <>
-              <Button variant="ghost" onClick={removeExam}>
+              <Button danger onClick={removeExam}>
                 删除
               </Button>
-              <Button icon="check" loading={busy} disabled={!hasQuestions} onClick={publish}>
+              <Button type="primary" loading={busy} disabled={!hasQuestions} onClick={publish}>
                 发布考试
               </Button>
             </>
           ) : (
             <>
-              {exam.status === 'published' ? (
-                <Button variant="ghost" onClick={close}>
-                  结束考试
-                </Button>
-              ) : null}
-              <Link className="btn btn-primary btn-md" to={`/teacher/exam/${exam.id}/grading`}>
+              {exam.status === 'published' ? <Button onClick={closeExam}>结束考试</Button> : null}
+              <Button type="primary" onClick={() => navigate(`/teacher/exam/${exam.id}/grading`)}>
                 批改与出分
-              </Link>
+              </Button>
             </>
           )}
-        </div>
+        </Space>
       </div>
 
-      {error ? <Alert tone="red">{error}</Alert> : null}
-      {notice ? (
-        <div style={{ marginBottom: 16 }}>
-          <Alert tone="green">{notice}</Alert>
-        </div>
-      ) : null}
+      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
+      {notice ? <Alert type="success" showIcon message={notice} className="mb-4" /> : null}
 
-      <Card className="card-pad" >
-        <div className="spread" style={{ marginBottom: 14 }}>
+      <Card className="mb-5">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="card-title">导入 Word 试卷</div>
-            <div className="card-sub">
+            <div className="text-[15px] font-semibold">导入 Word 试卷</div>
+            <Text type="secondary" style={{ fontSize: 12.5 }}>
               按模板填写后上传，系统会先给出解析预览，确认无误再写入试卷。
-            </div>
+            </Text>
           </div>
-          <a className="btn btn-ghost btn-sm" href="/api/template.docx" download>
-            <Icon name="download" size={15} /> 下载模板
-          </a>
+          <Button size="small" icon={<DownloadOutlined />} href="/api/template.docx" download>
+            下载模板
+          </Button>
         </div>
 
-        <div
-          className={`dropzone ${dragOver ? 'over' : ''}`}
-          onClick={() => fileRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            onFile(e.dataTransfer.files?.[0]);
-          }}
-        >
-          <div className="dz-icon">
-            <Icon name="upload" size={22} />
-          </div>
-          <h4>{importing ? '正在解析…' : '把 .docx 拖到这里，或点击选择文件'}</h4>
-          <p>
+        <Upload.Dragger {...uploadProps} style={{ background: '#fafbff' }}>
+          <p className="ant-upload-drag-icon">
+            <InboxOutlined />
+          </p>
+          <p className="ant-upload-text">{importing ? '正在解析…' : '把 .docx 拖到这里，或点击选择文件'}</p>
+          <p className="ant-upload-hint">
             {hasQuestions
               ? '重新导入会覆盖当前全部题目；已产生学生提交后不可再导入。'
               : '支持单选、多选、判断、填空、简答、代码六种题型。'}
           </p>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".docx"
-            hidden
-            onChange={(e) => {
-              onFile(e.target.files?.[0]);
-              e.target.value = '';
-            }}
-          />
-        </div>
+        </Upload.Dragger>
 
-        <div className="row" style={{ marginTop: 12 }}>
-          <Button variant="subtle" size="sm" loading={importing} onClick={() => runImport({ sample: true })}>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button size="small" loading={importing} onClick={() => runImport({ sample: true })}>
             使用示例模板试导入
           </Button>
-          <span className="muted" style={{ fontSize: 12 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
             示例模板包含六种题型，可用于快速体验完整流程。
-          </span>
+          </Text>
         </div>
       </Card>
 
-      <div style={{ height: 20 }} />
-
-      <Card>
-        <div className="card-head">
-          <div>
-            <div className="card-title">题目列表</div>
-            <div className="card-sub">分值可直接修改，保存后立即生效。</div>
-          </div>
-          <span className="badge tone-gray">{exam.questions.length} 题</span>
-        </div>
+      <Card
+        title="题目列表"
+        extra={<Tag>{exam.questions.length} 题</Tag>}
+        styles={{ body: { padding: hasQuestions ? 0 : 24 } }}
+      >
         {hasQuestions ? (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th style={{ width: 56 }}>题号</th>
-                  <th style={{ width: 86 }}>题型</th>
-                  <th>题干</th>
-                  <th style={{ width: 150 }}>答案 / 测试点</th>
-                  <th style={{ width: 90 }}>分值</th>
-                  <th style={{ width: 60 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {exam.questions.map((q) => (
-                  <tr key={q.id}>
-                    <td className="num">{q.seq}</td>
-                    <td>
-                      <TypeBadge type={q.type} />
-                    </td>
-                    <td>
-                      <div style={{ maxWidth: 460, lineHeight: 1.6 }}>{stripHtml(q.stemHtml).slice(0, 70)}</div>
-                    </td>
-                    <td className="muted" style={{ fontSize: 12.5, whiteSpace: 'pre-wrap' }}>
-                      {q.type === 'code'
-                        ? `${q.testCases.length} 个测试点`
-                        : q.type === 'short'
-                          ? '人工评分'
-                          : formatAnswerSpec(q.type, q.answer, q.options).split('\n')[0]}
-                    </td>
-                    <td>
-                      <input
-                        className="input"
-                        type="number"
-                        defaultValue={q.score}
-                        min={0.5}
-                        step={0.5}
-                        style={{ width: 76, padding: '6px 8px', textAlign: 'center' }}
-                        onBlur={(e) => updateScore(q, Number(e.target.value))}
-                      />
-                    </td>
-                    <td>
-                      <button className="icon-btn" title="删除题目" onClick={() => removeQuestion(q)}>
-                        <Icon name="trash" size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                <tr>
-                  <td colSpan={4} style={{ textAlign: 'right', fontWeight: 600 }}>
-                    合计
-                  </td>
-                  <td style={{ fontWeight: 700 }}>{scoreText(exam.totalScore, 2)}</td>
-                  <td />
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <Table
+            rowKey="id"
+            size="middle"
+            columns={columns}
+            dataSource={exam.questions}
+            pagination={false}
+          />
         ) : (
-          <EmptyState title="试卷还没有题目" desc="上传按模板填写的 Word，或先用示例模板试导入，看看解析效果。" />
+          <Empty description="试卷还没有题目，上传 Word 或使用示例模板试导入" />
         )}
       </Card>
 
       <Modal
         open={importOpen}
-        size="lg"
+        width={860}
         title="解析预览"
-        subtitle={
-          importResult
-            ? `共 ${importResult.counts.total} 题 · 合计 ${importResult.counts.totalScore} 分 · ${importResult.counts.errors} 个错误 · ${importResult.counts.warnings} 个警告`
-            : undefined
-        }
-        onClose={() => setImportOpen(false)}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setImportOpen(false)}>
-              取消
-            </Button>
-            <Button loading={busy} disabled={errorCount > 0} onClick={confirmImport}>
-              {errorCount > 0 ? '请先修正 Word 中的错误' : '确认导入'}
-            </Button>
-          </>
-        }
+        onCancel={() => setImportOpen(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setImportOpen(false)}>
+            取消
+          </Button>,
+          <Button key="ok" type="primary" loading={busy} disabled={errorCount > 0} onClick={confirmImport}>
+            {errorCount > 0 ? '请先修正 Word 中的错误' : '确认导入'}
+          </Button>,
+        ]}
       >
         {importResult ? (
           <>
-            <div className="import-summary">
-              <span className="badge tone-blue">{importResult.counts.total} 题</span>
-              <span className="badge tone-green">{importResult.counts.totalScore} 分</span>
-              {importResult.counts.errors > 0 ? (
-                <span className="badge tone-red">{importResult.counts.errors} 个错误</span>
-              ) : null}
-              {importResult.counts.warnings > 0 ? (
-                <span className="badge tone-amber">{importResult.counts.warnings} 个警告</span>
-              ) : null}
-            </div>
+            <Space size={8} wrap className="mb-3">
+              <Tag color="blue">{importResult.counts.total} 题</Tag>
+              <Tag color="green">{importResult.counts.totalScore} 分</Tag>
+              {importResult.counts.errors > 0 ? <Tag color="red">{importResult.counts.errors} 个错误</Tag> : null}
+              {importResult.counts.warnings > 0 ? <Tag color="gold">{importResult.counts.warnings} 个警告</Tag> : null}
+            </Space>
+
             {importResult.notes.length ? (
-              <div style={{ marginBottom: 14 }}>
-                <Alert tone="blue">{importResult.notes.join('；')}</Alert>
-              </div>
+              <Alert type="info" message={importResult.notes.join('；')} className="mb-3" />
             ) : null}
 
-            {importResult.questions.map((q) => {
-              const hardError = q.issues.some((i) => i.level === 'error');
-              return (
-                <div key={q.seq} className={`import-item ${hardError ? 'has-error' : ''}`}>
-                  <div className="qi-head">
-                    <span className="badge tone-gray">第 {q.seq} 题</span>
-                    <TypeBadge type={q.type} />
-                    <span className="badge tone-blue">{q.score} 分</span>
-                    {q.type === 'code' ? (
-                      <span className="badge tone-violet">{q.testCases.length} 个测试点</span>
+            <div className="max-h-[52vh] overflow-y-auto pr-1">
+              {importResult.questions.map((q) => {
+                const hardError = q.issues.some((i) => i.level === 'error');
+                return (
+                  <div
+                    key={q.seq}
+                    className={`mb-3 rounded-xl border p-3.5 ${hardError ? 'border-[#f3c4c4] bg-[#fffafa]' : 'border-[#e4e8f2]'}`}
+                  >
+                    <Space size={8} wrap className="mb-2">
+                      <Tag>第 {q.seq} 题</Tag>
+                      <TypeTag type={q.type} />
+                      <Tag color="blue">{q.score} 分</Tag>
+                      {q.type === 'code' ? <Tag color="purple">{q.testCases.length} 个测试点</Tag> : null}
+                    </Space>
+                    <div className="whitespace-pre-wrap text-[13.5px] leading-7 text-[#39445c]">
+                      {stripHtml(q.stemHtml).slice(0, 220)}
+                    </div>
+                    <div className="mt-2 text-[12px] text-[#7a839a]">
+                      {q.type === 'code'
+                        ? `语言：${q.codeSpec?.languages.join(', ') ?? 'python'}`
+                        : `答案：${formatAnswerSpec(q.type, q.answer, q.options).replace(/\n/g, '；').slice(0, 90)}`}
+                    </div>
+                    {q.issues.length ? (
+                      <Space direction="vertical" size={4} className="mt-2">
+                        {q.issues.map((issue, idx) => (
+                          <Tag key={idx} color={issue.level === 'error' ? 'red' : 'gold'}>
+                            {issue.level === 'error' ? '错误' : '提示'}：{issue.message}
+                          </Tag>
+                        ))}
+                      </Space>
                     ) : null}
                   </div>
-                  <div className="qi-stem">{stripHtml(q.stemHtml).slice(0, 220)}</div>
-                  <div className="qi-foot">
-                    {q.type === 'code'
-                      ? `语言：${q.codeSpec?.languages.join(', ') ?? 'python'}`
-                      : `答案：${formatAnswerSpec(q.type, q.answer, q.options).replace(/\n/g, '；').slice(0, 90)}`}
-                  </div>
-                  {q.issues.length ? (
-                    <ul className="issue-list">
-                      {q.issues.map((issue, idx) => (
-                        <li key={idx}>
-                          <span className={`issue ${issue.level}`}>
-                            {issue.level === 'error' ? '错误' : '提示'}：{issue.message}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </>
         ) : null}
       </Modal>
