@@ -3,5 +3,6 @@ dist/
 data/
 runtime/
 shots/
+audit/
 *.log
 .DS_Store

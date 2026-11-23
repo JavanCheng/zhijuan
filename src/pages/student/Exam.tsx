@@ -17,7 +17,7 @@ import { ArrowLeftOutlined, ClockCircleOutlined, CodeOutlined } from '@ant-desig
 import { api, post, put } from '../../api';
 import type { QuestionStudent, StudentAnswer, StudentExamPage } from '../../../shared/types';
 import { isAnswered } from '../../../shared/grading';
-import { TypeTag } from '../../ui';
+import { TypeTag, Page } from '../../ui';
 import { formatCountdown, scoreText } from '../../format';
 
 const { Text } = Typography;
@@ -294,9 +294,9 @@ export function StudentExam() {
 
   if (!page) {
     return (
-      <div className="mx-auto w-full max-w-[1180px] px-6 py-10">
+      <Page>
         {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
-      </div>
+      </Page>
     );
   }
 
@@ -310,7 +310,7 @@ export function StudentExam() {
   return (
     <>
       <div className="sticky top-[60px] z-20 border-b border-[#e4e8f2] bg-white">
-        <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center gap-4 px-6 py-3">
+        <div className="mx-auto flex w-full max-w-[1200px] flex-wrap items-center gap-4 px-6 py-3 lg:px-8">
           <Button type="text" icon={<ArrowLeftOutlined />} aria-label="保存并退出" onClick={exit} />
           <div className="text-[15.5px] font-semibold">{page.exam.title}</div>
           <div className="ml-auto flex flex-wrap items-center gap-4">
@@ -328,7 +328,8 @@ export function StudentExam() {
         </div>
       </div>
 
-      <div className="mx-auto grid w-full max-w-[1180px] items-start gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <Page className="!py-6">
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_288px]">
         <div>
           {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
@@ -338,7 +339,7 @@ export function StudentExam() {
                 第 {index + 1} 题
               </span>
               <TypeTag type={question.type} />
-              <span className="ml-auto text-[13px] text-[#7a839a]">本题 {scoreText(question.score, 2)} 分</span>
+              <span className="ml-auto text-[13px] text-[#7a839a]">本题 {scoreText(question.score)} 分</span>
             </div>
 
             <div className="stem" dangerouslySetInnerHTML={{ __html: question.stemHtml }} />
@@ -374,7 +375,7 @@ export function StudentExam() {
           </div>
         </div>
 
-        <aside className="grid content-start gap-4">
+        <aside className="grid content-start gap-4 lg:sticky lg:top-[132px]">
           <Card
             size="small"
             title={
@@ -433,7 +434,8 @@ export function StudentExam() {
             </Text>
           </Card>
         </aside>
-      </div>
+        </div>
+      </Page>
 
       <Modal
         open={confirmOpen}

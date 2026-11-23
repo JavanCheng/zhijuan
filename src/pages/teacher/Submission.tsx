@@ -20,10 +20,10 @@ import {
 import { ArrowLeftOutlined, CheckCircleFilled, CloseCircleFilled, SaveOutlined } from '@ant-design/icons';
 import { api, patch } from '../../api';
 import type { GradeDetail, QuestionTeacher, SubmissionDetailTeacher } from '../../../shared/types';
-import { SubmissionStatusTag, TypeTag } from '../../ui';
+import { SubmissionStatusTag, Page, PageHeader, TypeTag } from '../../ui';
 import { formatAnswerSpec, formatDate, formatStudentAnswer, scoreText } from '../../format';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 interface Draft {
@@ -113,39 +113,42 @@ export function TeacherSubmission() {
 
   if (!data) {
     return (
-      <div className="mx-auto w-full max-w-[1240px] px-6 py-7 lg:px-9">
+      <Page>
         {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
-      </div>
+      </Page>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-6 py-7 lg:px-9">
-      <Button
-        type="link"
-        icon={<ArrowLeftOutlined />}
-        className="!mb-2 !px-0"
-        onClick={() => navigate(`/teacher/exam/${data.examId}/grading`)}
-      >
-        返回批改列表
-      </Button>
-
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Title level={3} style={{ marginBottom: 6 }}>
+    <Page>
+      <PageHeader
+        back={
+          <Button
+            type="link"
+            icon={<ArrowLeftOutlined />}
+            className="!px-0"
+            onClick={() => navigate(`/teacher/exam/${data.examId}/grading`)}
+          >
+            返回批改列表
+          </Button>
+        }
+        title={
+          <>
             {data.studentName}
             <Text type="secondary" style={{ fontSize: 14, fontWeight: 400, marginLeft: 10 }}>
               {data.studentNo}
             </Text>
-          </Title>
+          </>
+        }
+        subtitle={
           <Space size={10} wrap>
             <SubmissionStatusTag status={data.status} />
-            <Text type="secondary" style={{ fontSize: 12.5 }}>
+            <span>
               {data.examTitle} · 提交于 {formatDate(data.submittedAt)}
-            </Text>
+            </span>
           </Space>
-        </div>
-      </div>
+        }
+      />
 
       {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
@@ -167,7 +170,7 @@ export function TeacherSubmission() {
                   <TypeTag type={q.type} />
                   {isManual ? <Tag color="gold">需人工评分</Tag> : null}
                   <span className="ml-auto text-[13px] text-[#7a839a]">
-                    满分 {scoreText(q.score, 2)} · 自动得分 {scoreText(answer?.autoScore)}
+                    满分 {scoreText(q.score)} · 自动得分 {scoreText(answer?.autoScore)}
                   </span>
                 </div>
 
@@ -219,7 +222,7 @@ export function TeacherSubmission() {
                               <div>
                                 {item.label}　
                                 <strong>
-                                  {scoreText(item.score, 2)} / {scoreText(item.maxScore, 2)}
+                                  {scoreText(item.score)} / {scoreText(item.maxScore)}
                                 </strong>
                                 {item.note ? <span className="text-[#7a839a]">　{item.note}</span> : null}
                               </div>
@@ -243,7 +246,7 @@ export function TeacherSubmission() {
                     <InputNumber
                       min={0}
                       max={q.score}
-                      step={0.5}
+                      step={1}
                       style={{ width: 110 }}
                       value={draft?.score != null ? Number(draft.score) : null}
                       onChange={(value) =>
@@ -254,7 +257,7 @@ export function TeacherSubmission() {
                       }
                     />
                     <Text type="secondary" style={{ fontSize: 12.5 }}>
-                      / {scoreText(q.score, 2)} 分
+                      / {scoreText(q.score)} 分
                     </Text>
                     <div className="flex-1" />
                     <Button
@@ -293,9 +296,9 @@ export function TeacherSubmission() {
           <Card style={{ position: 'sticky', top: 20 }}>
             <div className="text-[14px] font-semibold">本卷得分</div>
             <Statistic
-              value={Number(scoreText(totals.final, 2))}
-              precision={1}
-              suffix={`/ ${scoreText(data.examTotalScore, 2)}`}
+              value={totals.final}
+              precision={Number.isInteger(totals.final) ? 0 : 1}
+              suffix={`/ ${scoreText(data.examTotalScore)}`}
               valueStyle={{ fontSize: 30, fontWeight: 700 }}
             />
 
@@ -304,7 +307,7 @@ export function TeacherSubmission() {
             <div className="grid gap-2 text-[12.5px]">
               <div className="flex justify-between">
                 <Text type="secondary">自动评分合计</Text>
-                <strong>{scoreText(totals.auto, 2)}</strong>
+                <strong>{scoreText(totals.auto)}</strong>
               </div>
               <div className="flex justify-between">
                 <Text type="secondary">已人工确认</Text>
@@ -341,6 +344,6 @@ export function TeacherSubmission() {
           </Card>
         </Col>
       </Row>
-    </div>
+    </Page>
   );
 }

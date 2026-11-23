@@ -1,5 +1,41 @@
-import { Tag } from 'antd';
+import type { ReactNode } from 'react';
+import { Tag, Typography } from 'antd';
 import type { ExamStatus, QuestionType, SubmissionStatus } from '../shared/types';
+
+const { Title } = Typography;
+
+/** 统一的页面容器：宽度、左右留白、上下间距 */
+export function Page({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`mx-auto w-full max-w-[1200px] px-6 py-7 lg:px-8 ${className}`}>{children}</div>;
+}
+
+/** 统一的页头：标题、副标题、右侧操作区，可选返回链接 */
+export function PageHeader({
+  title,
+  subtitle,
+  extra,
+  back,
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  extra?: ReactNode;
+  back?: ReactNode;
+}) {
+  return (
+    <div className="mb-6">
+      {back ? <div className="mb-2.5">{back}</div> : null}
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <Title level={3} style={{ margin: 0, fontSize: 22, lineHeight: 1.4 }}>
+            {title}
+          </Title>
+          {subtitle ? <div className="mt-2 text-[13px] leading-6 text-[#7a839a]">{subtitle}</div> : null}
+        </div>
+        {extra ? <div className="flex flex-wrap items-center gap-2">{extra}</div> : null}
+      </div>
+    </div>
+  );
+}
 
 const TYPE_LABEL: Record<QuestionType, string> = {
   single: '单选',

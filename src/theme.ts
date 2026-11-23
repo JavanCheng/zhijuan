@@ -35,6 +35,13 @@ export const themeConfig: ThemeConfig = {
     },
     Card: {
       borderRadiusLG: 14,
+      bodyPadding: 20,
+      headerHeight: 52,
+      headerFontSize: 15,
+    },
+    Statistic: {
+      titleFontSize: 13,
+      contentFontSize: 26,
     },
     Table: {
       headerBg: '#fafbfe',

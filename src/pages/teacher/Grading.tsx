@@ -19,10 +19,10 @@ import type { TableProps } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { api, post } from '../../api';
 import type { ExamDetailTeacher, SubmissionRow } from '../../../shared/types';
-import { ExamStatusTag, SubmissionStatusTag } from '../../ui';
+import { ExamStatusTag, Page, PageHeader, SubmissionStatusTag } from '../../ui';
 import { formatDate, scoreText } from '../../format';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export function TeacherGrading() {
   const { id } = useParams();
@@ -113,9 +113,9 @@ export function TeacherGrading() {
 
   if (!exam || rows === null) {
     return (
-      <div className="mx-auto w-full max-w-[1240px] px-6 py-7 lg:px-9">
+      <Page>
         {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
-      </div>
+      </Page>
     );
   }
 
@@ -169,34 +169,38 @@ export function TeacherGrading() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-6 py-7 lg:px-9">
-      <Button type="link" icon={<ArrowLeftOutlined />} className="!mb-2 !px-0" onClick={() => navigate('/teacher')}>
-        返回考试列表
-      </Button>
-
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Title level={3} style={{ marginBottom: 6 }}>
-            {exam.title}
-          </Title>
+    <Page>
+      <PageHeader
+        back={
+          <Button type="link" icon={<ArrowLeftOutlined />} className="!px-0" onClick={() => navigate('/teacher')}>
+            返回考试列表
+          </Button>
+        }
+        title={exam.title}
+        subtitle={
           <Space size={10} wrap>
             <ExamStatusTag status={exam.status} />
             {exam.resultsPublished ? <Tag color="success">成绩已发布</Tag> : null}
-            <Text type="secondary" style={{ fontSize: 12.5 }}>
-              自动评分每 3 秒刷新一次
-            </Text>
+            <span>自动评分每 3 秒刷新一次</span>
           </Space>
-        </div>
-        <Space wrap>
-          <Button onClick={() => navigate(`/teacher/exam/${exam.id}`)}>试卷详情</Button>
-          <Button loading={busy} onClick={confirmAuto}>
-            确认全部自动分
-          </Button>
-          <Button type={exam.resultsPublished ? 'default' : 'primary'} danger={exam.resultsPublished} loading={busy} onClick={toggleResults}>
-            {exam.resultsPublished ? '撤回成绩' : '发布成绩'}
-          </Button>
-        </Space>
-      </div>
+        }
+        extra={
+          <>
+            <Button onClick={() => navigate(`/teacher/exam/${exam.id}`)}>试卷详情</Button>
+            <Button loading={busy} onClick={confirmAuto}>
+              确认全部自动分
+            </Button>
+            <Button
+              type={exam.resultsPublished ? 'default' : 'primary'}
+              danger={exam.resultsPublished}
+              loading={busy}
+              onClick={toggleResults}
+            >
+              {exam.resultsPublished ? '撤回成绩' : '发布成绩'}
+            </Button>
+          </>
+        }
+      />
 
       {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
@@ -218,7 +222,12 @@ export function TeacherGrading() {
         </Col>
         <Col xs={12} lg={6}>
           <Card styles={{ body: { padding: '16px 18px' } }}>
-            <Statistic title="平均分" value={Number(scoreText(stats.avg))} precision={1} suffix={`/ ${exam.totalScore}`} />
+            <Statistic
+              title="平均分"
+              value={stats.avg}
+              precision={Number.isInteger(stats.avg) ? 0 : 1}
+              suffix={`/ ${exam.totalScore}`}
+            />
           </Card>
         </Col>
       </Row>
@@ -240,6 +249,7 @@ export function TeacherGrading() {
           columns={columns}
           dataSource={visible}
           pagination={false}
+          scroll={{ x: 900 }}
           locale={{
             emptyText:
               rows.length === 0 ? '还没有学生提交，发布考试后这里会自动出现答卷' : '没有需要校准的答卷',
@@ -250,6 +260,6 @@ export function TeacherGrading() {
           })}
         />
       </Card>
-    </div>
+    </Page>
   );
 }

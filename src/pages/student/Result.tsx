@@ -1,16 +1,15 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, Card, Space, Spin, Typography } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { api } from '../../api';
 import type { StudentResultPage } from '../../../shared/types';
-import { TypeTag } from '../../ui';
+import { TypeTag, Page, PageHeader } from '../../ui';
 import { formatAnswerSpec, formatStudentAnswer, scoreText } from '../../format';
 
 const { Title, Text } = Typography;
 
-export function StudentResult() {
-  const { id } = useParams();
+export function StudentResult() {  const { id } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState<StudentResultPage | null>(null);
   const [error, setError] = useState('');
@@ -43,33 +42,25 @@ export function StudentResult() {
 
   if (!data) {
     return (
-      <div className="mx-auto w-full max-w-[1180px] px-6 py-10">
+      <Page>
         {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
-      </div>
+      </Page>
     );
   }
 
   const published = data.resultsPublished && data.score != null;
 
   return (
-    <div className="mx-auto w-full max-w-[1180px] px-6 py-7">
-      <Button
-        type="link"
-        icon={<ArrowLeftOutlined />}
-        className="!mb-2 !px-0"
-        onClick={() => navigate('/student')}
-      >
-        返回考试列表
-      </Button>
-
-      <div className="mb-5">
-        <Title level={3} style={{ marginBottom: 4 }}>
-          {data.exam.title}
-        </Title>
-        <Text type="secondary">
-          {published ? '成绩已发布，可查看每道题的得分与解析。' : '试卷已提交，正在等待评分与发布。'}
-        </Text>
-      </div>
+    <Page>
+      <PageHeader
+        back={
+          <Button type="link" icon={<ArrowLeftOutlined />} className="!px-0" onClick={() => navigate('/student')}>
+            返回考试列表
+          </Button>
+        }
+        title={data.exam.title}
+        subtitle={published ? '成绩已发布，可查看每道题的得分与解析。' : '试卷已提交，正在等待评分与发布。'}
+      />
 
       {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
@@ -79,12 +70,12 @@ export function StudentResult() {
             <div>
               <div className="text-[20px] font-semibold">本次得分</div>
               <div className="mt-2 text-[13px] text-white/60">
-                共 {data.questions.length} 题 · 满分 {scoreText(data.totalScore, 2)} 分
+                共 {data.questions.length} 题 · 满分 {scoreText(data.totalScore)} 分
               </div>
             </div>
             <div className="text-[54px] font-bold leading-none tracking-wide">
-              {scoreText(data.score, 2)}
-              <span className="ml-2 text-[16px] font-medium text-white/55">/ {scoreText(data.totalScore, 2)}</span>
+              {scoreText(data.score)}
+              <span className="ml-2 text-[16px] font-medium text-white/55">/ {scoreText(data.totalScore)}</span>
             </div>
           </div>
 
@@ -100,7 +91,7 @@ export function StudentResult() {
                     </span>
                     <TypeTag type={question.type} />
                     <span className="ml-auto text-[14px] font-semibold" style={{ color }}>
-                      {scoreText(score, 2)} / {scoreText(question.score, 2)}
+                      {scoreText(score)} / {scoreText(question.score)}
                     </span>
                   </div>
 
@@ -156,6 +147,6 @@ export function StudentResult() {
           </div>
         </Card>
       )}
-    </div>
+    </Page>
   );
 }

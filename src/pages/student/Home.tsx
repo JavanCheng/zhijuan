@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, Col, Empty, Row, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, Empty, Row, Space, Spin, Tag } from 'antd';
 import { ClockCircleOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons';
 import { api } from '../../api';
 import { useAuth } from '../../auth';
 import type { ExamSummary, SubmissionStatus } from '../../../shared/types';
-import { ExamStatusTag } from '../../ui';
+import { ExamStatusTag, Page, PageHeader } from '../../ui';
 import { formatDate } from '../../format';
-
-const { Title, Text } = Typography;
 
 interface StudentExamCard extends ExamSummary {
   teacherName: string;
@@ -29,20 +27,18 @@ export function StudentHome() {
 
   if (!exams) {
     return (
-      <div className="mx-auto w-full max-w-[1180px] px-6 py-7">
+      <Page>
         {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
-      </div>
+      </Page>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1180px] px-6 py-7">
-      <div className="mb-5">
-        <Title level={3} style={{ marginBottom: 4 }}>
-          你好，{user?.name}
-        </Title>
-        <Text type="secondary">这里是老师发布的考试。开始作答后计时不会暂停，请注意时间。</Text>
-      </div>
+    <Page>
+      <PageHeader
+        title={`你好，${user?.name}`}
+        subtitle="这里是老师发布的考试。开始作答后计时不会暂停，请注意时间。"
+      />
 
       {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
@@ -93,9 +89,7 @@ export function StudentHome() {
 
                   <div className="mt-auto">
                     {exam.status === 'closed' && !sub ? (
-                      <Text type="secondary" style={{ fontSize: 12.5 }}>
-                        考试已结束
-                      </Text>
+                      <span className="text-[12.5px] text-[#7a839a]">考试已结束</span>
                     ) : inProgress ? (
                       <Button type="primary" size="small" onClick={() => navigate(`/student/exam/${exam.id}`)}>
                         继续作答
@@ -116,6 +110,6 @@ export function StudentHome() {
           })}
         </Row>
       )}
-    </div>
+    </Page>
   );
 }

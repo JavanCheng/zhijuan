@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
   App as AntApp,
@@ -19,10 +19,10 @@ import type { TableProps, UploadProps } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined } from '@ant-design/icons';
 import { api, del, patch, post, put } from '../../api';
 import type { ExamDetailTeacher, ImportResult, QuestionTeacher } from '../../../shared/types';
-import { ExamStatusTag, TypeTag } from '../../ui';
+import { ExamStatusTag, Page, PageHeader, TypeTag } from '../../ui';
 import { formatAnswerSpec, scoreText, stripHtml } from '../../format';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 function ScoreCell({ question, onSave }: { question: QuestionTeacher; onSave: (value: number) => void }) {
   const [value, setValue] = useState<number | null>(question.score);
@@ -31,7 +31,7 @@ function ScoreCell({ question, onSave }: { question: QuestionTeacher; onSave: (v
       size="small"
       min={0.5}
       max={200}
-      step={0.5}
+      step={1}
       value={value}
       style={{ width: 80 }}
       onChange={setValue}
@@ -190,9 +190,9 @@ export function TeacherExam() {
 
   if (!exam) {
     return (
-      <div className="mx-auto w-full max-w-[1240px] px-6 py-7 lg:px-9">
+      <Page>
         {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
-      </div>
+      </Page>
     );
   }
 
@@ -235,25 +235,24 @@ export function TeacherExam() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-6 py-7 lg:px-9">
-      <Button type="link" icon={<ArrowLeftOutlined />} className="!mb-2 !px-0" onClick={() => navigate('/teacher')}>
-        返回考试列表
-      </Button>
-
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Title level={3} style={{ marginBottom: 6 }}>
-            {exam.title}
-          </Title>
+    <Page>
+      <PageHeader
+        back={
+          <Button type="link" icon={<ArrowLeftOutlined />} className="!px-0" onClick={() => navigate('/teacher')}>
+            返回考试列表
+          </Button>
+        }
+        title={exam.title}
+        subtitle={
           <Space size={10} wrap>
             <ExamStatusTag status={exam.status} />
-            <Text type="secondary" style={{ fontSize: 12.5 }}>
+            <span>
               共 {exam.questionCount} 题 · 合计 {exam.totalScore} 分 · {exam.submissionCount} 人提交
-            </Text>
+            </span>
           </Space>
-        </div>
-        <Space>
-          {exam.status === 'draft' ? (
+        }
+        extra={
+          exam.status === 'draft' ? (
             <>
               <Button danger onClick={removeExam}>
                 删除
@@ -269,25 +268,25 @@ export function TeacherExam() {
                 批改与出分
               </Button>
             </>
-          )}
-        </Space>
-      </div>
+          )
+        }
+      />
 
       {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
       {notice ? <Alert type="success" showIcon message={notice} className="mb-4" /> : null}
 
-      <Card className="mb-5">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-[15px] font-semibold">导入 Word 试卷</div>
-            <Text type="secondary" style={{ fontSize: 12.5 }}>
-              按模板填写后上传，系统会先给出解析预览，确认无误再写入试卷。
-            </Text>
-          </div>
+      <Card
+        className="mb-5"
+        title="导入 Word 试卷"
+        extra={
           <Button size="small" icon={<DownloadOutlined />} href="/api/template.docx" download>
             下载模板
           </Button>
-        </div>
+        }
+      >
+        <p className="mb-4 text-[12.5px] leading-6 text-[#7a839a]">
+          按模板填写后上传，系统会先给出解析预览，确认无误再写入试卷。
+        </p>
 
         <Upload.Dragger {...uploadProps} style={{ background: '#fafbff' }}>
           <p className="ant-upload-drag-icon">
@@ -305,9 +304,7 @@ export function TeacherExam() {
           <Button size="small" loading={importing} onClick={() => runImport({ sample: true })}>
             使用示例模板试导入
           </Button>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            示例模板包含六种题型，可用于快速体验完整流程。
-          </Text>
+          <span className="text-[12px] text-[#7a839a]">示例模板包含六种题型，可用于快速体验完整流程。</span>
         </div>
       </Card>
 
@@ -323,6 +320,7 @@ export function TeacherExam() {
             columns={columns}
             dataSource={exam.questions}
             pagination={false}
+            scroll={{ x: 780 }}
           />
         ) : (
           <Empty description="试卷还没有题目，上传 Word 或使用示例模板试导入" />
@@ -334,6 +332,7 @@ export function TeacherExam() {
         width={860}
         title="解析预览"
         onCancel={() => setImportOpen(false)}
+        styles={{ body: { maxHeight: '60vh', overflowY: 'auto' } }}
         footer={[
           <Button key="cancel" onClick={() => setImportOpen(false)}>
             取消
@@ -356,7 +355,7 @@ export function TeacherExam() {
               <Alert type="info" message={importResult.notes.join('；')} className="mb-3" />
             ) : null}
 
-            <div className="max-h-[52vh] overflow-y-auto pr-1">
+            <div className="pr-1">
               {importResult.questions.map((q) => {
                 const hardError = q.issues.some((i) => i.level === 'error');
                 return (
@@ -394,6 +393,6 @@ export function TeacherExam() {
           </>
         ) : null}
       </Modal>
-    </div>
+    </Page>
   );
 }

@@ -15,7 +15,6 @@ import {
   Space,
   Spin,
   Tag,
-  Typography,
 } from 'antd';
 import {
   ClockCircleOutlined,
@@ -26,10 +25,8 @@ import {
 } from '@ant-design/icons';
 import { api, del, post } from '../../api';
 import type { ExamSummary } from '../../../shared/types';
-import { ExamStatusTag } from '../../ui';
-import { formatDate } from '../../format';
+import { ExamStatusTag, Page, PageHeader } from '../../ui';
 
-const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 type ExamCard = ExamSummary & { submissionCount: number; gradedCount: number };
@@ -109,23 +106,21 @@ export function TeacherHome() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-6 py-7 lg:px-9">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Title level={3} style={{ marginBottom: 4 }}>
-            考试管理
-          </Title>
-          <Text type="secondary">用 Word 建卷 → 发布 → 批改 → 出分，全过程留痕。</Text>
-        </div>
-        <Space>
-          <Button icon={<DownloadOutlined />} href="/api/template.docx" download>
-            下载题目模板
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
-            新建考试
-          </Button>
-        </Space>
-      </div>
+    <Page>
+      <PageHeader
+        title="考试管理"
+        subtitle="用 Word 建卷 → 发布 → 批改 → 出分，全过程留痕。"
+        extra={
+          <>
+            <Button icon={<DownloadOutlined />} href="/api/template.docx" download>
+              下载题目模板
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
+              新建考试
+            </Button>
+          </>
+        }
+      />
 
       {runtime ? (
         runtime.python ? (
@@ -169,7 +164,7 @@ export function TeacherHome() {
               <Card
                 hoverable
                 style={{ height: '100%' }}
-                styles={{ body: { padding: 20, height: '100%', display: 'flex', flexDirection: 'column', gap: 14 } }}
+                styles={{ body: { height: '100%', display: 'flex', flexDirection: 'column', gap: 14 } }}
               >
                 <div className="flex items-center justify-between">
                   <ExamStatusTag status={exam.status} />
@@ -193,7 +188,6 @@ export function TeacherHome() {
                   <span>
                     <ClockCircleOutlined /> {exam.durationMin} 分钟
                   </span>
-                  <span>创建于 {formatDate(exam.createdAt)}</span>
                 </Space>
 
                 <div className="mt-auto flex flex-wrap gap-2">
@@ -254,6 +248,6 @@ export function TeacherHome() {
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </Page>
   );
 }
