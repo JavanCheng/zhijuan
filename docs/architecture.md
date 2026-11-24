@@ -16,15 +16,16 @@
 ```text
 ┌──────────────────────────── 浏览器 ────────────────────────────┐
 │  学生端 /student/*                教师端 /teacher/*             │
-│  React 19 + antd v6 + Tailwind CSS v4                          │
+│  React 19 + antd v6 + Tailwind CSS v4 + ECharts 6              │
 └───────────────┬────────────────────────────────────────────────┘
                 │ fetch /api/*（同源，Cookie 会话）
 ┌───────────────▼────────────────────────────────────────────────┐
 │ Fastify 5（server/index.ts）                                    │
 │  ├─ 静态托管 dist/ + SPA 兜底（非 /api 全部回 index.html）        │
-│  ├─ routes/auth     登录、退出、me、runtime                      │
-│  ├─ routes/teacher  考试、导入、题目、批改、发布                  │
-│  └─ routes/student  取卷、草稿、提交、成绩                        │
+│  ├─ routes/auth       登录、退出、me、runtime                    │
+│  ├─ routes/teacher    考试、导入、题目、批改、发布                │
+│  ├─ routes/analytics  学情看板、学生画像、班级调整                │
+│  └─ routes/student    取卷、草稿、提交、成绩                      │
 └───────┬───────────────────────┬────────────────────────────────┘
         │                       │
 ┌───────▼────────┐      ┌───────▼────────────────────────────────┐
@@ -89,13 +90,35 @@
   → POST /teacher/exams/:id/publish-results
 ```
 
+### 3.4 学情看板
+
+```text
+教师 GET /teacher/analytics/meta
+  → 可选考试（已发布 / 已结束）、全部班级、全部学生
+教师 GET /teacher/analytics?examId=&classIds=&studentIds=
+  → 只取 submissions.status = 'graded'
+  → 按班级 / 学生过滤，内存中汇总：
+       KPI（参评、均分、最高最低、及格率、优秀率、提交率）
+       分数段分布、班级统计、学生排名、逐题得分率、题型得分率
+       最近 8 场考试的平均得分率趋势
+教师 GET /teacher/students/:id/profile
+  → 学生历次成绩、班级平均、班级排名、最近一次逐题对比
+教师 POST /teacher/classes { name }
+  → 新建班级（写入 audit_logs）
+教师 PATCH /teacher/students/:id { classId }
+  → 修改 users.class_id，写 audit_logs
+```
+
+看板数据全部由服务端按当前筛选口径计算，前端只负责渲染 ECharts 选项；学生筛选与班级筛选可以叠加。
+
 ---
 
 ## 4. 数据模型
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `users` | username, password_hash, name, role, student_no | 师生同表，role 区分 |
+| `classes` | name, grade, sort_order | 班级字典，按 sort_order 展示 |
+| `users` | username, password_hash, name, role, student_no, class_id | 师生同表，role 区分；学生通过 class_id 归属班级 |
 | `exams` | title, teacher_id, status, duration_min, start_at, end_at, results_published | 状态机 draft→published→closed |
 | `questions` | exam_id, seq, type, stem_html, score, options_json, answer_json, explanation_html, code_spec_json | 答案与代码配置存 JSON |
 | `test_cases` | question_id, seq, stdin, expected_stdout, score, visible | visible=1 学生可见 |
@@ -110,6 +133,7 @@
 - `answers.raw_json` 按题型存不同结构（`{key}` / `{keys}` / `{value}` / `{blanks}` / `{text}` / `{language,code}`）。
 - `auto_detail_json` 保存可解释证据，教师端直接渲染。
 - 题目/测试点删除依赖外键 `ON DELETE CASCADE`，并发一致性靠单进程串行写。
+- 老库升级：启动时检测 `users.class_id`，缺失则 `ALTER TABLE`，并把未分班学生按人数均匀分配到默认班级。
 
 ---
 
@@ -146,11 +170,12 @@ server/runner/run.ts     执行器：进程、超时、输出截断、清理
 
 - 路由按角色分区，`RequireRole` 负责未登录跳转与越权重定向。
 - 数据获取用 `fetch` 封装（`src/api.ts`），页面自行管理状态，未引入额外状态库。
-- 教师端：列表 → 试卷（导入/分值）→ 批改列表 → 单份批改，四层线性导航。
+- 教师端：列表 → 试卷（导入/分值）→ 批改列表 → 单份批改，四层线性导航；学情看板独立一级入口。
 - 学生端：列表 → 作答（单题 + 答题卡 + 倒计时 + 自动保存）→ 成绩（轮询至发布）。
 - 组件全部来自 **antd v6**（Layout / Menu / Table / Form / Upload / Modal / Statistic / Result 等），通过 `ConfigProvider` 统一主题色、圆角与字体；`src/theme.ts` 是唯一的主题入口。
 - 布局与间距使用 **Tailwind CSS v4** 工具类（未引入 preflight，避免覆盖 antd 基础样式；在 `src/styles.css` 中补了边框与盒模型重置）。
-- 少量无法用组件表达的样式（题干 HTML 排版、代码编辑器、深色工具栏、登录渐变主视觉）保留在 `src/styles.css`。
+- 图表统一走 `src/charts/Chart.tsx`：按需注册 ECharts 模块（Bar / Line / Pie / Radar + Canvas），`ResizeObserver` 跟随容器缩放；学情看板路由使用 `React.lazy` 拆分，首屏不加载 ECharts。
+- 少量无法用组件表达的样式（题干 HTML 排版、代码编辑器、深色工具栏、登录渐变主视觉、侧边栏与图表容器）保留在 `src/styles.css`。
 - 所有资源随构建产物打包，运行时不依赖 CDN 或外网。
 
 ---
@@ -179,8 +204,9 @@ server/runner/run.ts     执行器：进程、超时、输出截断、清理
 | C++ / Java | runner 增加编译步骤与镜像；`CodeSpec.languages` 已支持多语言 |
 | AI 辅助评分 | worker 中对 `short` 题产出 `suggestedScore`，教师确认后才写 `final_score` |
 | 题库 / 组卷 | 抽出 `questions` 的 `exam_id` 为可空，增加 `bank` 与 `exam_questions` 关联表 |
-| Excel 导出 | 新增 `GET /teacher/exams/:id/export`，用 xlsx 生成成绩单 |
-| 多班级 | `users.class_id` + `exams.class_id`，列表按班过滤 |
+| Excel 导出 | 看板已提供 CSV；新增 xlsx 可复用 `/teacher/analytics` 的学生行数据 |
+| 按班发布 | 增加 `exams.class_ids_json` 或 `exam_classes` 关联表，学生列表与发布接口按班过滤 |
+| 更多学情维度 | 在 `questions` 上增加知识点 / 能力标签，看板按标签聚合 |
 
 ---
 

@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Alert, Button, Form, Input, Typography } from 'antd';
 import {
+  BarChartOutlined,
   CheckCircleOutlined,
   CodeOutlined,
   FileTextOutlined,
-  TeamOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import { homeOf, useAuth } from '../auth';
@@ -17,7 +17,13 @@ const FEATURES = [
   { icon: <FileTextOutlined />, text: 'Word 一次导入，六种题型自动识别' },
   { icon: <CheckCircleOutlined />, text: '选择、填空、判断即时判分' },
   { icon: <CodeOutlined />, text: '代码题真实运行，逐点给分' },
-  { icon: <TeamOutlined />, text: '教师校准台，自动分可逐题调整' },
+  { icon: <BarChartOutlined />, text: '班级学情看板，多班多生对比' },
+];
+
+const HERO_STATS = [
+  { value: '6', label: '种题型' },
+  { value: '3', label: '维学情' },
+  { value: '0', label: '外网依赖' },
 ];
 
 export function Login() {
@@ -65,9 +71,19 @@ export function Login() {
             连成一条线
           </Title>
           <p className="max-w-[460px] text-[15px] leading-8 text-white/70">
-            教师用 Word 出卷，系统自动解析题型与答案；客观题秒级判分，代码题在沙箱里跑真实测试点；每一分改动都留痕。
+            教师用 Word 出卷，系统自动解析题型与答案；客观题秒级判分，代码题在沙箱里跑真实测试点；每一分改动都留痕，成绩自动汇成班级学情看板。
           </p>
-          <div className="mt-9 grid gap-3.5">
+
+          <div className="mt-7 grid max-w-[430px] grid-cols-3 gap-2.5">
+            {HERO_STATS.map((item) => (
+              <div className="hero-stat" key={item.label}>
+                <div className="text-[24px] font-semibold leading-none">{item.value}</div>
+                <div className="mt-1.5 text-[11px] text-white/50">{item.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-7 grid gap-3.5">
             {FEATURES.map((f) => (
               <div className="hero-item" key={f.text}>
                 <span className="grid h-[22px] w-[22px] flex-none place-items-center rounded-[7px] bg-white/10 text-[13px] text-[#a8c0ff]">
@@ -116,7 +132,7 @@ export function Login() {
               <Button block onClick={() => fill('s01')} className="!h-auto !py-2.5">
                 <div className="text-left leading-tight">
                   <div className="text-[13px] font-medium">学生端</div>
-                  <div className="text-[12px] text-[#7a839a]">s01</div>
+                  <div className="text-[12px] text-[#7a839a]">s01 · 高一(1)班</div>
                 </div>
               </Button>
             </div>

@@ -5,24 +5,39 @@ import {
   App as AntApp,
   Button,
   Card,
-  Col,
-  Row,
+  Input,
+  Progress,
   Segmented,
-  Space,
+  Select,
   Spin,
-  Statistic,
   Table,
-  Tag,
   Typography,
 } from 'antd';
 import type { TableProps } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import {
+  ArrowLeftOutlined,
+  BarChartOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  TeamOutlined,
+  TrophyOutlined,
+} from '@ant-design/icons';
 import { api, post } from '../../api';
 import type { ExamDetailTeacher, SubmissionRow } from '../../../shared/types';
-import { ExamStatusTag, Page, PageHeader, SubmissionStatusTag } from '../../ui';
-import { formatDate, scoreText } from '../../format';
+import { ExamStatusTag, Page, PageHeader, Pill, StatCard, SubmissionStatusTag } from '../../ui';
+import { formatDate, formatTime, scoreText } from '../../format';
 
 const { Text } = Typography;
+
+function scoreColor(score: number | null, total: number): string | undefined {
+  if (score == null || total <= 0) return undefined;
+  const rate = (score / total) * 100;
+  if (rate >= 85) return '#0f7a56';
+  if (rate < 60) return '#bf3737';
+  return undefined;
+}
 
 export function TeacherGrading() {
   const { id } = useParams();
@@ -35,6 +50,9 @@ export function TeacherGrading() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<'all' | 'review'>('all');
+  const [classFilter, setClassFilter] = useState<number | 'all'>('all');
+  const [keyword, setKeyword] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -45,6 +63,7 @@ export function TeacherGrading() {
       setExam(detail);
       setRows(subs);
       setError('');
+      setLastUpdated(new Date().toISOString());
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
     }
@@ -58,15 +77,40 @@ export function TeacherGrading() {
     return () => window.clearInterval(timer);
   }, [load]);
 
+  const classOptions = useMemo(() => {
+    const seen = new Map<number, string>();
+    for (const row of rows ?? []) {
+      if (row.classId != null) seen.set(row.classId, row.className ?? `班级 ${row.classId}`);
+    }
+    return [...seen.entries()].map(([value, label]) => ({ value, label }));
+  }, [rows]);
+
   const stats = useMemo(() => {
     const list = rows ?? [];
-    const graded = list.filter((r) => r.status === 'graded');
-    const review = list.filter((r) => r.needsReview > 0);
+    const submitted = list.filter((row) => row.status !== 'in_progress');
+    const graded = list.filter((row) => row.status === 'graded');
+    const review = submitted.filter((row) => row.needsReview > 0);
     const avg = graded.length
-      ? graded.reduce((s, r) => s + (r.finalScore ?? r.autoScore ?? 0), 0) / graded.length
+      ? Math.round((graded.reduce((sum, row) => sum + (row.finalScore ?? row.autoScore ?? 0), 0) / graded.length) * 10) / 10
       : 0;
-    return { submitted: list.length, graded: graded.length, review: review.length, avg };
-  }, [rows]);
+    const pass = exam
+      ? graded.filter((row) => {
+          const score = row.finalScore ?? row.autoScore ?? 0;
+          return exam.totalScore > 0 && (score / exam.totalScore) * 100 >= 60;
+        }).length
+      : 0;
+    return { submitted: submitted.length, graded: graded.length, review: review.length, avg, pass };
+  }, [rows, exam]);
+
+  const visible = useMemo(() => {
+    const text = keyword.trim();
+    return (rows ?? []).filter((row) => {
+      if (filter === 'review' && row.needsReview === 0) return false;
+      if (classFilter !== 'all' && row.classId !== classFilter) return false;
+      if (text && !row.studentName.includes(text) && !row.studentNo.includes(text)) return false;
+      return true;
+    });
+  }, [rows, filter, classFilter, keyword]);
 
   function confirmAuto() {
     modal.confirm({
@@ -119,47 +163,79 @@ export function TeacherGrading() {
     );
   }
 
-  const visible = filter === 'review' ? rows.filter((r) => r.needsReview > 0) : rows;
-
   const columns: TableProps<SubmissionRow>['columns'] = [
-    { title: '学号', dataIndex: 'studentNo', width: 110, render: (v) => <Text type="secondary">{v}</Text> },
-    { title: '姓名', dataIndex: 'studentName', width: 110, render: (v) => <span className="font-medium">{v}</span> },
-    { title: '状态', dataIndex: 'status', width: 120, render: (_, r) => <SubmissionStatusTag status={r.status} /> },
+    {
+      title: '学生',
+      width: 150,
+      render: (_, row) => (
+        <div className="leading-tight">
+          <div className="text-[13px] font-medium text-[#26304a]">{row.studentName}</div>
+          <div className="text-[10.5px] text-[#98a1b3]">{row.studentNo}</div>
+        </div>
+      ),
+    },
+    {
+      title: '班级',
+      dataIndex: 'className',
+      width: 112,
+      render: (value: string | null) => (value ? <Pill tone="teal">{value}</Pill> : <Text type="secondary">—</Text>),
+    },
+    { title: '状态', dataIndex: 'status', width: 108, render: (_, row) => <SubmissionStatusTag status={row.status} /> },
     {
       title: '作答进度',
-      width: 100,
-      render: (_, r) => `${r.answered}/${r.questionCount}`,
+      width: 120,
+      render: (_, row) => {
+        const rate = Math.round((row.answered / Math.max(1, row.questionCount)) * 100);
+        return (
+          <div className="flex items-center gap-2">
+            <Progress percent={rate} showInfo={false} size="small" strokeColor="#3358e8" style={{ margin: 0, width: 56 }} />
+            <span className="tabular-nums text-[11.5px] text-[#7b86a0]">
+              {row.answered}/{row.questionCount}
+            </span>
+          </div>
+        );
+      },
     },
-    { title: '自动分', width: 90, render: (_, r) => scoreText(r.autoScore) },
+    {
+      title: '自动分',
+      width: 84,
+      render: (_, row) => <span className="tabular-nums text-[#7b86a0]">{scoreText(row.autoScore)}</span>,
+    },
     {
       title: '最终分',
-      width: 90,
-      render: (_, r) => <span className="font-semibold">{scoreText(r.finalScore ?? r.autoScore)}</span>,
+      width: 96,
+      render: (_, row) => (
+        <span className="font-semibold tabular-nums" style={{ color: scoreColor(row.finalScore ?? row.autoScore, exam.totalScore) }}>
+          {scoreText(row.finalScore ?? row.autoScore)}
+          <span className="ml-1 text-[10.5px] font-normal text-[#b0b7c7]">/ {scoreText(exam.totalScore)}</span>
+        </span>
+      ),
     },
     {
       title: '待校准',
-      width: 100,
-      render: (_, r) => (r.needsReview > 0 ? <Tag color="gold">{r.needsReview} 题</Tag> : <Text type="secondary">—</Text>),
+      width: 92,
+      render: (_, row) =>
+        row.needsReview > 0 ? <Pill tone="amber">{row.needsReview} 题</Pill> : <Text type="secondary">—</Text>,
     },
     {
       title: '提交时间',
-      width: 170,
-      render: (_, r) => (
-        <Text type="secondary" style={{ fontSize: 12.5 }}>
-          {formatDate(r.submittedAt)}
+      width: 140,
+      render: (_, row) => (
+        <Text type="secondary" style={{ fontSize: 11.5 }}>
+          {formatDate(row.submittedAt)}
         </Text>
       ),
     },
     {
       title: '',
-      width: 80,
-      render: (_, r) => (
+      width: 74,
+      render: (_, row) => (
         <Button
           size="small"
           type="link"
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/teacher/submission/${r.id}`);
+          onClick={(event) => {
+            event.stopPropagation();
+            navigate(`/teacher/submission/${row.id}`);
           }}
         >
           批改
@@ -176,16 +252,23 @@ export function TeacherGrading() {
             返回考试列表
           </Button>
         }
+        eyebrow="Grading"
         title={exam.title}
         subtitle={
-          <Space size={10} wrap>
+          <span className="flex flex-wrap items-center gap-2.5">
             <ExamStatusTag status={exam.status} />
-            {exam.resultsPublished ? <Tag color="success">成绩已发布</Tag> : null}
-            <span>自动评分每 3 秒刷新一次</span>
-          </Space>
+            {exam.resultsPublished ? <Pill tone="green">成绩已发布</Pill> : null}
+            <span className="inline-flex items-center gap-1.5">
+              <ReloadOutlined className="text-[11px]" />
+              每 3 秒自动刷新{lastUpdated ? ` · 最近 ${formatTime(lastUpdated)}` : ''}
+            </span>
+          </span>
         }
         extra={
           <>
+            <Button icon={<BarChartOutlined />} onClick={() => navigate(`/teacher/analytics?examId=${exam.id}`)}>
+              学情看板
+            </Button>
             <Button onClick={() => navigate(`/teacher/exam/${exam.id}`)}>试卷详情</Button>
             <Button loading={busy} onClick={confirmAuto}>
               确认全部自动分
@@ -204,55 +287,99 @@ export function TeacherGrading() {
 
       {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
-      <Row gutter={[14, 14]} className="mb-5">
-        <Col xs={12} lg={6}>
-          <Card styles={{ body: { padding: '16px 18px' } }}>
-            <Statistic title="已提交" value={stats.submitted} suffix="人" />
-          </Card>
-        </Col>
-        <Col xs={12} lg={6}>
-          <Card styles={{ body: { padding: '16px 18px' } }}>
-            <Statistic title="自动评分完成" value={stats.graded} suffix="人" />
-          </Card>
-        </Col>
-        <Col xs={12} lg={6}>
-          <Card styles={{ body: { padding: '16px 18px' } }}>
-            <Statistic title="需要人工校准" value={stats.review} suffix="人" valueStyle={{ color: stats.review ? '#d48806' : undefined }} />
-          </Card>
-        </Col>
-        <Col xs={12} lg={6}>
-          <Card styles={{ body: { padding: '16px 18px' } }}>
-            <Statistic
-              title="平均分"
-              value={stats.avg}
-              precision={Number.isInteger(stats.avg) ? 0 : 1}
-              suffix={`/ ${exam.totalScore}`}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      <div className="mb-4">
-        <Segmented
-          value={filter}
-          onChange={(value) => setFilter(value as 'all' | 'review')}
-          options={[
-            { label: `全部（${rows.length}）`, value: 'all' },
-            { label: `需校准（${stats.review}）`, value: 'review' },
-          ]}
+      <div className="mb-5 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+        <StatCard
+          label="已提交"
+          value={stats.submitted}
+          suffix="人"
+          icon={<TeamOutlined />}
+          tone="blue"
+          hint={`共 ${exam.questionCount} 题 · 满分 ${scoreText(exam.totalScore)}`}
+        />
+        <StatCard
+          label="自动评分完成"
+          value={stats.graded}
+          suffix="人"
+          icon={<CheckCircleOutlined />}
+          tone="green"
+          hint={stats.submitted ? `完成率 ${Math.round((stats.graded / stats.submitted) * 100)}%` : '等待学生提交'}
+        />
+        <StatCard
+          label="需要人工校准"
+          value={stats.review}
+          suffix="人"
+          icon={<ClockCircleOutlined />}
+          tone={stats.review ? 'amber' : 'gray'}
+          hint={stats.review ? '优先处理简答与代码题' : '暂无待校准答卷'}
+        />
+        <StatCard
+          label="平均分"
+          value={stats.avg}
+          suffix={`/ ${scoreText(exam.totalScore)}`}
+          icon={<TrophyOutlined />}
+          tone="purple"
+          hint={`${stats.pass} 人达到及格线 60%`}
         />
       </div>
+
+      <Card className="mb-4" styles={{ body: { padding: '14px 16px' } }}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmented
+            value={filter}
+            onChange={(value) => setFilter(value as 'all' | 'review')}
+            options={[
+              { label: `全部（${rows.length}）`, value: 'all' },
+              { label: `需校准（${stats.review}）`, value: 'review' },
+            ]}
+          />
+          <Select
+            value={classFilter}
+            onChange={setClassFilter}
+            style={{ width: 150 }}
+            options={[{ value: 'all', label: '全部班级' }, ...classOptions]}
+          />
+          <Input
+            allowClear
+            prefix={<SearchOutlined className="text-[#98a1b3]" />}
+            placeholder="搜索姓名或学号"
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            style={{ width: 220 }}
+          />
+          <div className="ml-auto flex items-center gap-3 text-[11.5px] text-[#98a1b3]">
+            <span>筛选结果 {visible.length} 份</span>
+            {classFilter !== 'all' || keyword ? (
+              <Button
+                size="small"
+                type="text"
+                onClick={() => {
+                  setClassFilter('all');
+                  setKeyword('');
+                }}
+              >
+                清除筛选
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </Card>
 
       <Card styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="id"
           columns={columns}
           dataSource={visible}
-          pagination={false}
-          scroll={{ x: 900 }}
+          pagination={{
+            pageSize: 12,
+            showSizeChanger: false,
+            showTotal: (total) => `共 ${total} 份答卷`,
+          }}
+          scroll={{ x: 980 }}
           locale={{
             emptyText:
-              rows.length === 0 ? '还没有学生提交，发布考试后这里会自动出现答卷' : '没有需要校准的答卷',
+              rows.length === 0
+                ? '还没有学生提交，发布考试后这里会自动出现答卷'
+                : '当前筛选条件下没有答卷',
           }}
           onRow={(record) => ({
             onClick: () => navigate(`/teacher/submission/${record.id}`),

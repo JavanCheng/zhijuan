@@ -140,4 +140,19 @@ Write-Host "   代码题：$failed / $($codeA.autoDetail.items.Count) 个测试�
 if ($sub2.totalAutoScore -ne 5) { throw "错误答卷自动分异常：$($sub2.totalAutoScore)" }
 if ($failed -ne $codeA.autoDetail.items.Count) { throw '代码题错误未被识别' }
 
+Step '13. 学情看板：班级维度、筛选与学生画像'
+$meta = Api 'Get' '/api/teacher/analytics/meta' $null $tea
+if (@($meta.classes).Count -lt 1) { throw '班级数据缺失' }
+if (@($meta.students).Count -lt 2) { throw '学生数据缺失' }
+Write-Host "   班级 $($meta.classes.Count) 个 / 学生 $($meta.students.Count) 人"
+$an = Api 'Get' "/api/teacher/analytics?examId=$($exam.id)" $null $tea
+if ($an.kpi.participants -ne 2) { throw "学情看板参评人数异常：$($an.kpi.participants)" }
+if (@($an.questions).Count -ne $page.questions.Count) { throw '学情看板题目数量异常' }
+$classId = $meta.students | Where-Object { $_.id -eq $stu.user.id } | Select-Object -ExpandProperty classId
+$anClass = Api 'Get' "/api/teacher/analytics?examId=$($exam.id)&classIds=$classId" $null $tea
+if ($anClass.kpi.participants -ne 2) { throw "班级筛选后参评人数异常：$($anClass.kpi.participants)" }
+$profile = Api 'Get' "/api/teacher/students/$($stu.user.id)/profile" $null $tea
+if (@($profile.exams).Count -lt 1) { throw '学生画像缺少考试记录' }
+Write-Host "   学情看板参评 $($an.kpi.participants) 人，平均分 $($an.kpi.avg)，班级筛选正常，学生画像 $($profile.exams.Count) 场"
+
 Write-Host "`n冒烟测试通过：examId=$($exam.id) submissionId=$($page.submission.id) 错误卷 submissionId=$($page2.submission.id)" -ForegroundColor Green

@@ -9,6 +9,8 @@ export interface User {
   name: string;
   role: 'teacher' | 'student';
   studentNo?: string | null;
+  classId?: number | null;
+  className?: string | null;
 }
 
 interface AuthState {

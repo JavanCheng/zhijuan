@@ -20,7 +20,7 @@ import {
 import { ArrowLeftOutlined, CheckCircleFilled, CloseCircleFilled, SaveOutlined } from '@ant-design/icons';
 import { api, patch } from '../../api';
 import type { GradeDetail, QuestionTeacher, SubmissionDetailTeacher } from '../../../shared/types';
-import { SubmissionStatusTag, Page, PageHeader, TypeTag } from '../../ui';
+import { Page, PageHeader, Pill, SubmissionStatusTag, TypeTag } from '../../ui';
 import { formatAnswerSpec, formatDate, formatStudentAnswer, scoreText } from '../../format';
 
 const { Text } = Typography;
@@ -75,7 +75,7 @@ export function TeacherSubmission() {
       const a = data.answers.find((x) => x.questionId === q.id);
       auto += a?.autoScore ?? 0;
       const draft = drafts[q.id];
-      const value = draft ? Number(draft.score) : a?.finalScore ?? a?.autoScore ?? 0;
+      const value = draft ? Number(draft.score) : (a?.finalScore ?? a?.autoScore ?? 0);
       final += Number.isFinite(value) ? value : 0;
       if (a?.finalScore != null) graded += 1;
     }
@@ -111,12 +111,26 @@ export function TeacherSubmission() {
     }
   }
 
+  function jumpTo(questionId: number) {
+    document.getElementById(`question-${questionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   if (!data) {
     return (
       <Page>
         {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
       </Page>
     );
+  }
+
+  function questionTone(question: QuestionTeacher): string {
+    const answer = answerOf(question.id);
+    const draft = drafts[question.id];
+    const score = draft ? Number(draft.score) : (answer?.finalScore ?? answer?.autoScore ?? 0);
+    if (!answer?.raw) return '#c7cedd';
+    if (!Number.isFinite(score) || score <= 0) return '#e86969';
+    if (score >= question.score) return '#12b886';
+    return '#f2a33c';
   }
 
   return (
@@ -132,13 +146,13 @@ export function TeacherSubmission() {
             返回批改列表
           </Button>
         }
+        eyebrow="Review"
         title={
-          <>
+          <span className="flex flex-wrap items-center gap-2">
             {data.studentName}
-            <Text type="secondary" style={{ fontSize: 14, fontWeight: 400, marginLeft: 10 }}>
-              {data.studentNo}
-            </Text>
-          </>
+            <span className="text-[13px] font-normal text-[#98a1b3]">学号 {data.studentNo}</span>
+            {data.className ? <Pill tone="teal">{data.className}</Pill> : null}
+          </span>
         }
         subtitle={
           <Space size={10} wrap>
@@ -150,7 +164,7 @@ export function TeacherSubmission() {
         }
       />
 
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
+      {error ? <Alert type="error" showIcon message={error} className="mb-4" closable onClose={() => setError('')} /> : null}
 
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={17}>
@@ -160,16 +174,24 @@ export function TeacherSubmission() {
             const detail: GradeDetail | null = answer?.autoDetail ?? null;
             const items = detail?.items ?? [];
             const isManual = q.type === 'short';
+            const answered = !!answer?.raw;
+            const tone = questionTone(q);
 
             return (
-              <Card key={q.id} className="mb-4">
+              <Card
+                key={q.id}
+                id={`question-${q.id}`}
+                className="mb-4"
+                style={{ scrollMarginTop: 84, borderLeft: `3px solid ${tone}` }}
+              >
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <span className="rounded-lg bg-[#eef2ff] px-2.5 py-1 text-[12.5px] font-semibold text-[#1f3fae]">
                     第 {q.seq} 题
                   </span>
                   <TypeTag type={q.type} />
-                  {isManual ? <Tag color="gold">需人工评分</Tag> : null}
-                  <span className="ml-auto text-[13px] text-[#7a839a]">
+                  {isManual ? <Pill tone="amber">需人工评分</Pill> : null}
+                  {!answered ? <Pill tone="red">未作答</Pill> : null}
+                  <span className="ml-auto text-[12.5px] text-[#7b86a0]">
                     满分 {scoreText(q.score)} · 自动得分 {scoreText(answer?.autoScore)}
                   </span>
                 </div>
@@ -178,7 +200,7 @@ export function TeacherSubmission() {
 
                 {q.options.length ? (
                   <div className="mt-3.5">
-                    <div className="mb-1.5 text-[12px] text-[#7a839a]">选项</div>
+                    <div className="mb-1.5 text-[12px] text-[#7b86a0]">选项</div>
                     <div className="leading-8">
                       {q.options.map((o) => (
                         <div key={o.key}>
@@ -190,22 +212,20 @@ export function TeacherSubmission() {
                 ) : null}
 
                 <div className="mt-3.5">
-                  <div className="mb-1.5 text-[12px] text-[#7a839a]">学生作答</div>
-                  <div
-                    className={`answer-panel ${answer?.raw ? '' : 'is-empty'} ${q.type === 'code' ? 'is-code' : ''}`}
-                  >
+                  <div className="mb-1.5 text-[12px] text-[#7b86a0]">学生作答</div>
+                  <div className={`answer-panel ${answered ? '' : 'is-empty'} ${q.type === 'code' ? 'is-code' : ''}`}>
                     {q.type === 'code' ? answer?.raw?.code || '（未作答）' : formatStudentAnswer(q.type, answer?.raw ?? null, q.options)}
                   </div>
                 </div>
 
                 <div className="mt-3.5">
-                  <div className="mb-1.5 text-[12px] text-[#7a839a]">参考答案</div>
+                  <div className="mb-1.5 text-[12px] text-[#7b86a0]">参考答案</div>
                   <div className="answer-panel">{formatAnswerSpec(q.type, q.answer, q.options)}</div>
                 </div>
 
                 {items.length ? (
                   <div className="mt-3.5">
-                    <div className="mb-1.5 text-[12px] text-[#7a839a]">自动评分依据</div>
+                    <div className="mb-1.5 text-[12px] text-[#7b86a0]">自动评分依据</div>
                     <div className="grid gap-2">
                       {items.map((item, idx) => (
                         <div
@@ -224,7 +244,7 @@ export function TeacherSubmission() {
                                 <strong>
                                   {scoreText(item.score)} / {scoreText(item.maxScore)}
                                 </strong>
-                                {item.note ? <span className="text-[#7a839a]">　{item.note}</span> : null}
+                                {item.note ? <span className="text-[#7b86a0]">　{item.note}</span> : null}
                               </div>
                               {item.expected !== undefined || item.got !== undefined ? (
                                 <div className="mt-1 whitespace-pre-wrap font-mono text-[11.5px] text-[#5b6479]">
@@ -240,8 +260,19 @@ export function TeacherSubmission() {
                   </div>
                 ) : null}
 
-                <div className="mt-4">
-                  <div className="mb-1.5 text-[12px] text-[#7a839a]">评分</div>
+                <div className="mt-4 rounded-xl border border-[#eef1f8] bg-[#fbfcff] p-3.5">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="text-[12px] font-medium text-[#4b5670]">评分</span>
+                    <span className="text-[11.5px] text-[#98a1b3]">改动会写入审计日志</span>
+                    <div className="ml-auto flex gap-1">
+                      <Button size="small" type="text" onClick={() => setDrafts((prev) => ({ ...prev, [q.id]: { score: '0', comment: prev[q.id]?.comment ?? '' } }))}>
+                        0 分
+                      </Button>
+                      <Button size="small" type="text" onClick={() => setDrafts((prev) => ({ ...prev, [q.id]: { score: String(q.score), comment: prev[q.id]?.comment ?? '' } }))}>
+                        满分
+                      </Button>
+                    </div>
+                  </div>
                   <div className="flex flex-wrap items-center gap-3">
                     <InputNumber
                       min={0}
@@ -276,12 +307,12 @@ export function TeacherSubmission() {
                     className="mt-2.5"
                     placeholder="评语（可选，学生发布成绩后可见）"
                     value={draft?.comment ?? ''}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       setDrafts((prev) => ({
                         ...prev,
                         [q.id]: {
                           score: prev[q.id]?.score ?? String(answer?.autoScore ?? 0),
-                          comment: e.target.value,
+                          comment: event.target.value,
                         },
                       }))
                     }
@@ -293,14 +324,26 @@ export function TeacherSubmission() {
         </Col>
 
         <Col xs={24} xl={7}>
-          <Card style={{ position: 'sticky', top: 20 }}>
-            <div className="text-[14px] font-semibold">本卷得分</div>
+          <Card style={{ position: 'sticky', top: 82 }}>
+            <div className="flex items-center justify-between">
+              <div className="text-[14px] font-semibold text-[#26304a]">本卷得分</div>
+              <Tag bordered={false} color="blue">
+                {data.questions.length} 题
+              </Tag>
+            </div>
             <Statistic
               value={totals.final}
               precision={Number.isInteger(totals.final) ? 0 : 1}
               suffix={`/ ${scoreText(data.examTotalScore)}`}
-              valueStyle={{ fontSize: 30, fontWeight: 700 }}
+              valueStyle={{ fontSize: 31, fontWeight: 700, color: '#1a2338' }}
             />
+
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#eef1f8]">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-[#6f8cf5] to-[#3358e8]"
+                style={{ width: `${Math.min(100, (totals.final / Math.max(1, data.examTotalScore)) * 100)}%` }}
+              />
+            </div>
 
             <Divider style={{ margin: '14px 0' }} />
 
@@ -330,15 +373,42 @@ export function TeacherSubmission() {
               showInfo={false}
             />
 
-            <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.8 }}>
+            <div className="mt-4 mb-2 text-[11px] font-semibold tracking-wide text-[#98a1b3]">题目导航</div>
+            <div className="grid grid-cols-6 gap-1.5">
+              {data.questions.map((q) => (
+                <button
+                  key={q.id}
+                  type="button"
+                  title={`第 ${q.seq} 题`}
+                  onClick={() => jumpTo(q.id)}
+                  className="grid h-8 place-items-center rounded-lg border text-[11.5px] font-medium transition hover:border-[#3358e8]"
+                  style={{
+                    borderColor: `${questionTone(q)}55`,
+                    background: `${questionTone(q)}14`,
+                    color: questionTone(q),
+                  }}
+                >
+                  {q.seq}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-3 text-[10.5px] text-[#98a1b3]">
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-sm bg-[#12b886]" /> 满分
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-sm bg-[#f2a33c]" /> 部分分
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-sm bg-[#e86969]" /> 0 分
+              </span>
+            </div>
+
+            <Text type="secondary" style={{ fontSize: 11.5, lineHeight: 1.8, display: 'block', marginTop: 12 }}>
               修改分数后点「保存本题」立即生效，所有改动都会写入审计日志。
             </Text>
 
-            <Button
-              block
-              className="mt-3"
-              onClick={() => navigate(`/teacher/exam/${data.examId}/grading`)}
-            >
+            <Button block className="mt-3" onClick={() => navigate(`/teacher/exam/${data.examId}/grading`)}>
               完成，返回列表
             </Button>
           </Card>

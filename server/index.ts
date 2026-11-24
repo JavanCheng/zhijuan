@@ -11,6 +11,7 @@ import { HttpError } from './http.ts';
 import { authRoutes } from './routes/auth.ts';
 import { teacherRoutes } from './routes/teacher.ts';
 import { studentRoutes } from './routes/student.ts';
+import { analyticsRoutes } from './routes/analytics.ts';
 import { startGradingWorker } from './grading/worker.ts';
 import { runtimeStatus } from './runner/run.ts';
 
@@ -30,6 +31,7 @@ await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024, files: 1 }
 
 await app.register(authRoutes, { prefix: '/api' });
 await app.register(teacherRoutes, { prefix: '/api' });
+await app.register(analyticsRoutes, { prefix: '/api' });
 await app.register(studentRoutes, { prefix: '/api' });
 
 app.get('/api/health', async () => ({

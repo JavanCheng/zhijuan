@@ -3,9 +3,9 @@
 一套面向课堂的「教师出卷 → 学生作答 → 自动阅卷 → 教师校准 → 成绩发布」闭环系统。
 教师用 **Word** 出题，系统自动解析题型、答案与代码测试点；客观题秒级判分，代码题在真实运行时里跑测试点；教师端可以逐题校准每一分。
 
-> 当前版本：v0.1（单机 / 局域网形态，无需数据库服务、无需 Docker、无需外网）
+> 当前版本：v0.2（单机 / 局域网形态，无需数据库服务、无需 Docker、无需外网）
 
-**技术栈**：React 19 + antd v6 + Tailwind CSS v4 + Vite ｜ Fastify 5 + TypeScript ｜ SQLite（node:sqlite）｜ 内置 Python 运行时
+**技术栈**：React 19 + antd v6 + Tailwind CSS v4 + ECharts 6 + Vite ｜ Fastify 5 + TypeScript ｜ SQLite（node:sqlite）｜ 内置 Python 运行时
 
 ---
 
@@ -19,6 +19,10 @@
 
 ![教师端首页](docs/images/02-teacher-home.png)
 
+**教师端 · 学情看板**（按班级 / 学生维度汇总，ECharts 图表汇报）
+
+![学情看板](docs/images/06-analytics.png)
+
 **学生答题**（答题卡、倒计时、自动保存、代码编辑器与样例）
 
 ![学生答题](docs/images/03-student-exam.png)
@@ -26,6 +30,10 @@
 **学生成绩**（发布后可见每题得分、参考答案与解析）
 
 ![学生成绩](docs/images/05-student-result.png)
+
+**学生首页**（显示所属班级、考试状态与成绩）
+
+![学生首页](docs/images/07-student-home.png)
 
 ---
 
@@ -39,15 +47,19 @@
 | Word 导入 | 上传 `.docx`，先解析预览、标出错误与警告，确认后再入库 |
 | 题目管理 | 查看六种题型、修改分值、删除题目、查看答案与测试点 |
 | 发布 / 结束 | 草稿 → 进行中 → 已结束 |
-| 批改台 | 学生列表、自动分、最终分、待校准题数，3 秒刷新 |
+| 批改台 | 学生列表、班级筛选、自动分、最终分、待校准题数，3 秒刷新 |
 | 逐题校准 | 改分 + 评语，改动写入审计日志；可一键确认全部自动分 |
 | 成绩发布 | 发布后学生可见每题得分、参考答案、解析 |
+| 学情看板 | ECharts 图表：成绩分布、班级对比、学生对比、逐题得分率、历次趋势；支持多班级 / 多学生筛选 |
+| 学生画像 | 单名学生历次成绩走势、班级排名、最近一次逐题得分与班级平均对比 |
+| 班级设置 | 在学情看板内新建班级、调整学生所属班级，立即影响统计口径 |
 
 ### 学生端
 
 | 能力 | 说明 |
 | --- | --- |
-| 考试列表 | 未开始 / 继续作答 / 批改中 / 查看成绩 |
+| 班级与身份 | 顶部与学生首页展示所属班级、学号；教师端可按班统计 |
+| 考试列表 | 未开始 / 继续作答 / 批改中 / 查看成绩；已出分考试直接显示得分 |
 | 在线作答 | 六种题型、答题卡导航、自动保存草稿、倒计时 |
 | 提交 | 二次确认（提示未作答题数），提交后锁定，自动进入评分队列 |
 | 成绩 | 发布后可看总分、每题得分、参考答案、教师评语与解析 |
@@ -94,11 +106,13 @@ pnpm dev       # Vite :5173（/api 代理到 :8787）+ tsx watch
 | 角色 | 账号 | 密码 | 说明 |
 | --- | --- | --- | --- |
 | 教师 | `teacher` | `123456` | 张老师 |
-| 学生 | `s01` ~ `s36` | `123456` | 高一(3)班 36 人，也可用学号登录（如 `20250301`） |
+| 学生 | `s01` ~ `s36` | `123456` | 分属高一(1)(2)(3)班，每班 12 人；也可用学号登录（如 `20250301`） |
+
+> 班级按学号顺序分配：`s01`–`s12` 高一(1)班，`s13`–`s24` 高一(2)班，`s25`–`s36` 高一(3)班。可在教师端「学情看板 → 班级设置」中调整。
 
 ### 数据存放
 
-所有数据在 `data/app.db`（SQLite 单文件）。删除 `data/` 目录后重启即可恢复初始状态并重新灌入演示账号。
+所有数据在 `data/app.db`（SQLite 单文件）。删除 `data/` 目录后重启即可恢复初始状态并重新灌入演示账号与班级。
 
 ---
 
@@ -112,12 +126,28 @@ pnpm dev       # Vite :5173（/api 代理到 :8787）+ tsx watch
 6. 提交后等待几秒，自动评分完成。
 7. 回到教师端 **批改与出分**：能看到自动分、代码题每个测试点的通过情况；给简答题打分。
 8. **发布成绩**，学生端即可看到每题得分与解析。
+9. 打开 **学情看板**：选择考试、班级、学生，查看成绩分布、班级对比、学生对比与逐题分析；点击学生「画像」查看个人趋势。
 
-命令行也可以完整跑一遍（含错误答卷校验）：
+想直接体验有多班对比数据的看板，可先运行一次演示数据脚本（需要数据库中已有一场含题目的考试，脚本会再创建 3 场历史考试并为 36 名学生生成成绩）：
+
+```bash
+pnpm demo:data
+```
+
+命令行也可以完整跑一遍（含错误答卷校验与看板接口校验）：
 
 ```bash
 pnpm smoke
 ```
+
+### 学情看板怎么用
+
+- **统计口径**：只统计已完成自动评分（`graded`）的答卷；在批改台点「确认全部自动分」后，所有自动分即成为最终分。
+- **筛选**：考试单选；班级、学生均可多选。选择学生后，整页 KPI、班级对比、题目分析都会收敛到所选学生。
+- **图表**：成绩分布、历次平均分趋势、班级平均分 / 及格率 / 优秀率、班级分数段构成、逐题得分率、题型雷达图。
+- **学生对比**：未选学生时展示 8 位覆盖各分数段的代表学生；选中学生后展示所选学生的总分与逐题得分对比（图表最多展示 8 人）。
+- **学生画像**：点击「画像」查看个人历次得分率走势、班级平均对比、最近一次逐题得分和考试记录。
+- **导出**：右上角「导出成绩」下载当前筛选口径的 CSV（带 BOM，可直接用 Excel 打开）。
 
 ---
 
@@ -246,18 +276,22 @@ yby/
 │  ├─ import/docx.ts        # Word 解析（mammoth + 状态机）
 │  ├─ runner/run.ts         # Python / Node 执行器
 │  ├─ grading/worker.ts     # 评分队列 worker
-│  └─ routes/               # auth / teacher / student
+│  └─ routes/               # auth / teacher / analytics / student
 ├─ shared/                  # 前后端共用类型与纯函数判分
 │  ├─ types.ts
 │  └─ grading.ts
 ├─ src/                     # React 前端
-│  ├─ pages/teacher/        # 考试列表、试卷、批改、单份批改
+│  ├─ charts/               # ECharts 按需注册与通用图表组件
+│  ├─ pages/teacher/        # 考试列表、试卷、批改、单份批改、学情看板、学生画像
 │  ├─ pages/student/        # 考试列表、作答、成绩
-│  ├─ ui.tsx / styles.css   # antd 主题、状态标签与全局样式
+│  ├─ ui.tsx / styles.css   # antd 主题、布局与全局样式
 │  └─ api.ts / auth.tsx / format.ts
 ├─ scripts/
 │  ├─ make_template.py      # 生成 Word 模板
 │  ├─ test-import.ts        # 解析自检
+│  ├─ seed-demo.mjs         # 可选：生成多班看板演示数据
+│  ├─ analytics-check.mjs   # 看板 / 响应式视觉巡检
+│  ├─ ui-check.mjs          # 浏览器级端到端检查
 │  └─ smoke.ps1             # 端到端冒烟
 ├─ templates/题目模板.docx
 ├─ runtime/python/          # 内置 Python 运行时（可删除，改用系统 Python）
@@ -279,11 +313,14 @@ yby/
 | `pnpm typecheck` | TypeScript 全量类型检查 |
 | `pnpm template` | 重新生成 Word 模板（需 python-docx） |
 | `pnpm import:test` | 只测 Word 解析（打印每题解析结果） |
-| `pnpm smoke` | 接口级端到端冒烟（含错误答卷校验，需服务运行中） |
-| `node scripts/ui-check.mjs` | 浏览器级端到端检查（Playwright + 本机 Edge，输出截图到 `shots/`） |
+| `pnpm demo:data` | 可选：生成 3 场历史考试与 36 名学生成绩，用于体验学情看板 |
+| `pnpm demo:reset` | 强制重建演示数据（会覆盖已有提交，仅用于演示库） |
+| `pnpm smoke` | 接口级端到端冒烟（含错误答卷与看板接口校验，需服务运行中） |
+| `node scripts/ui-check.mjs` | 浏览器级端到端检查（Playwright + 本机 Edge；建议在空库运行，输出截图到 `shots/`） |
+| `node scripts/analytics-check.mjs` | 学情看板 + 响应式视觉巡检（输出截图到 `audit/`，建议先运行 `pnpm demo:data`） |
 | `pwsh scripts/demo-setup.ps1` | 空库时生成一场示例考试 |
 
-四层自检覆盖不同风险：`pnpm typecheck` 管类型；`pnpm import:test` 管 Word 解析；`pnpm smoke` 管接口与判分链路（含错误答卷）；`node scripts/ui-check.mjs` 用真实浏览器跑完「发布 → 作答 → 自动评分 → 人工改分 → 发布成绩」并截图。
+多层自检覆盖不同风险：`pnpm typecheck` 管类型；`pnpm import:test` 管 Word 解析；`pnpm smoke` 管接口、判分链路与看板接口；`node scripts/ui-check.mjs` 用真实浏览器跑完「发布 → 作答 → 自动评分 → 人工改分 → 发布成绩」并截图；`node scripts/analytics-check.mjs` 管看板图表、筛选、学生画像与移动端布局。
 
 环境变量：
 
@@ -317,6 +354,11 @@ yby/
 | GET | `/api/teacher/submissions/:id` | 单份答卷（含自动评分证据） |
 | PATCH | `/api/teacher/answers/:id` | 人工改分 |
 | POST | `/api/teacher/exams/:id/confirm-auto` | 一键确认自动分 |
+| GET | `/api/teacher/analytics/meta` | 看板筛选项：考试、班级、学生 |
+| GET | `/api/teacher/analytics` | 学情看板数据（`examId`、`classIds`、`studentIds`） |
+| GET | `/api/teacher/students/:id/profile` | 学生画像（历次成绩、班级排名、逐题对比） |
+| POST | `/api/teacher/classes` | 新建班级 |
+| PATCH | `/api/teacher/students/:id` | 调整学生所属班级 |
 | GET | `/api/student/exams` | 学生考试列表 |
 | GET | `/api/student/exams/:id` | 取卷（首次自动创建作答记录） |
 | PUT | `/api/student/submissions/:id/draft` | 保存草稿 |
@@ -332,7 +374,10 @@ yby/
 - 题目内容目前只能通过重新导入修改（会覆盖整卷）；已有人提交时禁止重新导入/删题。
 - 多选题暂不支持「漏选得半分」配置。
 - 简答题没有自动评分（预留了 AI 辅助的接入点）。
-- 成绩暂无 Excel 导出、无题库沉淀与组卷。
+- 学情看板只统计已完成自动评分的答卷；评分进行中的答卷不会出现在统计里。
+- 班级目前是统计维度，考试仍面向全体学生发布，尚未做「按班发布 / 按班限权」。
+- 班级调整在「学情看板 → 班级设置」中逐个学生切换，暂不支持批量导入名单。
+- 成绩暂无 Excel 导出（看板提供 CSV 导出）、无题库沉淀与组卷。
 - 倒计时到点自动提交依赖学生页面仍打开；服务端以提交时间为准做兜底校验。
 - 未启用 HTTPS；局域网内认证 Cookie 明文传输（内网场景可接受，公网需加 TLS）。
 
@@ -340,6 +385,7 @@ yby/
 
 1. 代码沙箱升级为 Docker（`--network none`、只读根、内存/CPU/PID 限制）。
 2. 支持 C++/Java（镜像与编译链路）。
-3. 题库与组卷、Excel 成绩导出、班级维度统计。
+3. 题库与组卷、Excel 成绩导出、按班发布考试。
 4. 简答题 AI 辅助评分（建议分 + 教师确认，仍以人工为准）。
 5. 题目在线编辑（不依赖 Word）与图片粘贴上传。
+6. 学情看板增加知识点 / 能力维度标签与跨考试班级追踪。

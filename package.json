@@ -1,6 +1,6 @@
 {
   "name": "zhijuan",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "智卷 · 信息科技在线测评系统（教师端 + 学生端）",
@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "template": "python scripts/make_template.py",
     "import:test": "tsx scripts/test-import.ts",
+    "demo:data": "node scripts/seed-demo.mjs",
+    "demo:reset": "node scripts/seed-demo.mjs --force",
     "smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1"
   },
   "pnpm": {
@@ -24,6 +26,7 @@
     "@fastify/multipart": "^10.1.9",
     "@fastify/static": "^10.1.12",
     "antd": "^6.7.2",
+    "echarts": "^6.1.0",
     "fastify": "^5.12.8",
     "mammoth": "^1.13.0",
     "react": "^19.3.1",

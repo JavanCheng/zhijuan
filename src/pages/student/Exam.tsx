@@ -309,23 +309,34 @@ export function StudentExam() {
 
   return (
     <>
-      <div className="sticky top-[60px] z-20 border-b border-[#e4e8f2] bg-white">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-wrap items-center gap-4 px-6 py-3 lg:px-8">
+      <div className="sticky top-[62px] z-20 border-b border-[#e4e8f2] bg-white/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[1280px] flex-wrap items-center gap-4 px-6 py-3 lg:px-8">
           <Button type="text" icon={<ArrowLeftOutlined />} aria-label="保存并退出" onClick={exit} />
-          <div className="text-[15.5px] font-semibold">{page.exam.title}</div>
+          <div>
+            <div className="text-[15.5px] font-semibold leading-tight">{page.exam.title}</div>
+            <div className="mt-0.5 text-[10.5px] text-[#98a1b3]">
+              {page.exam.teacherName} · 满分 {page.exam.totalScore} 分 · {page.questions.length} 题
+            </div>
+          </div>
           <div className="ml-auto flex flex-wrap items-center gap-4">
             <span className={`exam-timer ${urgent ? 'urgent' : ''}`}>
               <ClockCircleOutlined />
               {remaining === null ? '--:--' : formatCountdown(remaining)}
             </span>
-            <Text type="secondary" style={{ fontSize: 12 }}>
+            <span className="flex items-center gap-1.5 text-[11.5px] text-[#98a1b3]">
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  saving === 'error' ? 'bg-[#e86969]' : saving === 'saving' ? 'bg-[#f2a33c]' : 'bg-[#12b886]'
+                }`}
+              />
               {saveLabel}
-            </Text>
+            </span>
             <Button type="primary" onClick={() => setConfirmOpen(true)}>
               提交试卷
             </Button>
           </div>
         </div>
+        <div className="absolute bottom-0 left-0 h-[2px] bg-gradient-to-r from-[#6f8cf5] to-[#3358e8] transition-all" style={{ width: `${(answeredCount / Math.max(1, page.questions.length)) * 100}%` }} />
       </div>
 
       <Page className="!py-6">
@@ -375,7 +386,7 @@ export function StudentExam() {
           </div>
         </div>
 
-        <aside className="grid content-start gap-4 lg:sticky lg:top-[132px]">
+        <aside className="grid content-start gap-4 lg:sticky lg:top-[126px]">
           <Card
             size="small"
             title={

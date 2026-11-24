@@ -48,18 +48,19 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
         question_count: number;
         sub_id: number | null;
         sub_status: string | null;
+        sub_score: number | null;
         submitted_at: string | null;
       }
     >(
       `SELECT e.*, u.name AS teacher_name,
         (SELECT COALESCE(SUM(q.score), 0) FROM questions q WHERE q.exam_id = e.id) AS total_score,
         (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count,
-        s.id AS sub_id, s.status AS sub_status, s.submitted_at
+        s.id AS sub_id, s.status AS sub_status, COALESCE(s.final_score, s.auto_score) AS sub_score, s.submitted_at
        FROM exams e
        JOIN users u ON u.id = e.teacher_id
        LEFT JOIN submissions s ON s.exam_id = e.id AND s.student_id = ?
        WHERE e.status IN ('published', 'closed')
-       ORDER BY e.id DESC`,
+       ORDER BY CASE WHEN e.status = 'published' THEN 0 ELSE 1 END, e.created_at DESC, e.id DESC`,
       user.id,
     );
 
@@ -67,7 +68,12 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
       ...examSummary(r, { totalScore: r.total_score, questionCount: r.question_count }),
       teacherName: r.teacher_name,
       submission: r.sub_id
-        ? { id: r.sub_id, status: r.sub_status, submittedAt: r.submitted_at }
+        ? {
+            id: r.sub_id,
+            status: r.sub_status,
+            score: r.sub_score,
+            submittedAt: r.submitted_at,
+          }
         : null,
     }));
   });

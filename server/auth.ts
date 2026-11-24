@@ -10,6 +10,8 @@ export interface SessionUser {
   name: string;
   role: 'teacher' | 'student';
   studentNo: string | null;
+  classId: number | null;
+  className: string | null;
 }
 
 let cachedSecret: string | null = null;
@@ -38,9 +40,23 @@ export function currentUser(req: FastifyRequest): SessionUser | null {
     name: string;
     role: 'teacher' | 'student';
     student_no: string | null;
-  }>('SELECT id, username, name, role, student_no FROM users WHERE id = ?', id);
+    class_id: number | null;
+    class_name: string | null;
+  }>(
+    `SELECT u.id, u.username, u.name, u.role, u.student_no, u.class_id, c.name AS class_name
+     FROM users u LEFT JOIN classes c ON c.id = u.class_id WHERE u.id = ?`,
+    id,
+  );
   if (!row) return null;
-  return { id: row.id, username: row.username, name: row.name, role: row.role, studentNo: row.student_no };
+  return {
+    id: row.id,
+    username: row.username,
+    name: row.name,
+    role: row.role,
+    studentNo: row.student_no,
+    classId: row.class_id,
+    className: row.class_name,
+  };
 }
 
 export { verifyPassword, hashPassword } from './password.ts';

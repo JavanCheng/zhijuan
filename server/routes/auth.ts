@@ -33,7 +33,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       name: string;
       role: 'teacher' | 'student';
       student_no: string | null;
-    }>('SELECT * FROM users WHERE username = ? OR student_no = ?', username.trim(), username.trim());
+      class_id: number | null;
+      class_name: string | null;
+    }>(
+      `SELECT u.*, c.name AS class_name FROM users u LEFT JOIN classes c ON c.id = u.class_id
+       WHERE u.username = ? OR u.student_no = ?`,
+      username.trim(),
+      username.trim(),
+    );
 
     if (!row || !verifyPassword(password, row.password_hash)) {
       throw new HttpError(401, '账号或密码错误');
@@ -41,7 +48,15 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     setSession(reply, row.id);
     return {
-      user: { id: row.id, username: row.username, name: row.name, role: row.role, studentNo: row.student_no },
+      user: {
+        id: row.id,
+        username: row.username,
+        name: row.name,
+        role: row.role,
+        studentNo: row.student_no,
+        classId: row.class_id,
+        className: row.class_name,
+      },
     };
   });
 

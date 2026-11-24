@@ -80,19 +80,34 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/teacher/exams', async (req) => {
     const user = requireTeacher(req);
-    const rows = all<ExamRow & { total_score: number; question_count: number; submission_count: number; graded_count: number }>(
+    const rows = all<ExamRow & {
+      total_score: number;
+      question_count: number;
+      submission_count: number;
+      graded_count: number;
+      pending_count: number;
+      review_count: number;
+    }>(
       `SELECT e.*,
         (SELECT COALESCE(SUM(q.score), 0) FROM questions q WHERE q.exam_id = e.id) AS total_score,
         (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count,
         (SELECT COUNT(*) FROM submissions s WHERE s.exam_id = e.id) AS submission_count,
-        (SELECT COUNT(*) FROM submissions s WHERE s.exam_id = e.id AND s.status = 'graded') AS graded_count
-       FROM exams e WHERE e.teacher_id = ? ORDER BY e.id DESC`,
+        (SELECT COUNT(*) FROM submissions s WHERE s.exam_id = e.id AND s.status = 'graded') AS graded_count,
+        (SELECT COUNT(*) FROM submissions s WHERE s.exam_id = e.id AND s.status IN ('submitted', 'grading')) AS pending_count,
+        (SELECT COUNT(DISTINCT s.id) FROM submissions s
+           JOIN answers a ON a.submission_id = s.id
+           JOIN questions q ON q.id = a.question_id
+          WHERE s.exam_id = e.id AND s.status = 'graded' AND a.final_score IS NULL
+            AND (q.type = 'short' OR (q.type = 'code' AND COALESCE(a.auto_score, -1) < q.score))) AS review_count
+       FROM exams e WHERE e.teacher_id = ? ORDER BY e.created_at DESC, e.id DESC`,
       user.id,
     );
     return rows.map((r) => ({
       ...examSummary(r, { totalScore: r.total_score, questionCount: r.question_count }),
       submissionCount: r.submission_count,
       gradedCount: r.graded_count,
+      pendingCount: r.pending_count,
+      reviewCount: r.review_count,
     }));
   });
 
@@ -306,23 +321,29 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       student_id: number;
       student_name: string;
       student_no: string;
+      class_id: number | null;
+      class_name: string | null;
       status: SubmissionRow['status'];
       auto_score: number | null;
       final_score: number | null;
       submitted_at: string | null;
       answered: number;
     }>(
-      `SELECT s.id, s.student_id, u.name AS student_name, u.student_no, s.status, s.auto_score, s.final_score, s.submitted_at,
+      `SELECT s.id, s.student_id, u.name AS student_name, u.student_no, u.class_id, c.name AS class_name,
+        s.status, s.auto_score, s.final_score, s.submitted_at,
         (SELECT COUNT(*) FROM answers a WHERE a.submission_id = s.id AND a.raw_json IS NOT NULL) AS answered
-       FROM submissions s JOIN users u ON u.id = s.student_id
-       WHERE s.exam_id = ? ORDER BY u.student_no`,
+       FROM submissions s
+       JOIN users u ON u.id = s.student_id
+       LEFT JOIN classes c ON c.id = u.class_id
+       WHERE s.exam_id = ? ORDER BY c.sort_order, u.student_no`,
       exam.id,
     );
 
     const reviewRows = all<{ submission_id: number; n: number }>(
       `SELECT a.submission_id, COUNT(*) AS n
        FROM answers a JOIN questions q ON q.id = a.question_id
-       WHERE q.exam_id = ? AND (q.type = 'short' OR (q.type = 'code' AND COALESCE(a.auto_score, -1) < q.score))
+       WHERE q.exam_id = ? AND a.final_score IS NULL
+         AND (q.type = 'short' OR (q.type = 'code' AND COALESCE(a.auto_score, -1) < q.score))
        GROUP BY a.submission_id`,
       exam.id,
     );
@@ -333,6 +354,8 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       studentId: r.student_id,
       studentName: r.student_name,
       studentNo: r.student_no,
+      classId: r.class_id,
+      className: r.class_name,
       status: r.status,
       autoScore: r.auto_score,
       finalScore: r.final_score,
@@ -356,11 +379,17 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       submitted_at: string | null;
       student_name: string;
       student_no: string;
+      class_id: number | null;
+      class_name: string | null;
       exam_title: string;
       teacher_id: number;
     }>(
-      `SELECT s.*, u.name AS student_name, u.student_no, e.title AS exam_title, e.teacher_id
-       FROM submissions s JOIN users u ON u.id = s.student_id JOIN exams e ON e.id = s.exam_id
+      `SELECT s.*, u.name AS student_name, u.student_no, u.class_id, c.name AS class_name,
+        e.title AS exam_title, e.teacher_id
+       FROM submissions s
+       JOIN users u ON u.id = s.student_id
+       LEFT JOIN classes c ON c.id = u.class_id
+       JOIN exams e ON e.id = s.exam_id
        WHERE s.id = ?`,
       sid,
     );
@@ -404,6 +433,8 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       studentId: sub.student_id,
       studentName: sub.student_name,
       studentNo: sub.student_no,
+      classId: sub.class_id,
+      className: sub.class_name,
       status: sub.status,
       autoScore: sub.auto_score,
       finalScore: sub.final_score ?? totalFinal,

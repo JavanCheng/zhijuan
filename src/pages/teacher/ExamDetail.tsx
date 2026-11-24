@@ -10,16 +10,23 @@ import {
   Modal,
   Space,
   Spin,
+  Steps,
   Table,
   Tag,
   Typography,
   Upload,
 } from 'antd';
 import type { TableProps, UploadProps } from 'antd';
-import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined } from '@ant-design/icons';
+import {
+  ArrowLeftOutlined,
+  BarChartOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  InboxOutlined,
+} from '@ant-design/icons';
 import { api, del, patch, post, put } from '../../api';
 import type { ExamDetailTeacher, ImportResult, QuestionTeacher } from '../../../shared/types';
-import { ExamStatusTag, Page, PageHeader, TypeTag } from '../../ui';
+import { ExamStatusTag, Page, PageHeader, Pill, TypeTag } from '../../ui';
 import { formatAnswerSpec, scoreText, stripHtml } from '../../format';
 
 const { Text } = Typography;
@@ -33,7 +40,7 @@ function ScoreCell({ question, onSave }: { question: QuestionTeacher; onSave: (v
       max={200}
       step={1}
       value={value}
-      style={{ width: 80 }}
+      style={{ width: 82 }}
       onChange={setValue}
       onBlur={() => {
         if (value != null && value !== question.score) onSave(value);
@@ -90,7 +97,7 @@ export function TeacherExam() {
   const uploadProps: UploadProps = {
     accept: '.docx',
     showUploadList: false,
-    disabled: importing,
+    disabled: importing || (exam?.submissionCount ?? 0) > 0,
     customRequest: async ({ file, onSuccess, onError }) => {
       const form = new FormData();
       form.append('file', file as File);
@@ -197,7 +204,13 @@ export function TeacherExam() {
   }
 
   const hasQuestions = exam.questions.length > 0;
+  const locked = exam.submissionCount > 0;
   const errorCount = importResult?.counts.errors ?? 0;
+
+  let stepCurrent = 0;
+  if (hasQuestions) stepCurrent = 1;
+  if (exam.status !== 'draft') stepCurrent = 2;
+  if (exam.resultsPublished) stepCurrent = 4;
 
   const columns: TableProps<QuestionTeacher>['columns'] = [
     { title: '题号', dataIndex: 'seq', width: 64 },
@@ -205,7 +218,9 @@ export function TeacherExam() {
     {
       title: '题干',
       dataIndex: 'stemHtml',
-      render: (_, q) => <div className="max-w-[460px] text-[13.5px] leading-6">{stripHtml(q.stemHtml).slice(0, 72)}</div>,
+      render: (_, q) => (
+        <div className="max-w-[520px] text-[13.5px] leading-6 text-[#39445c]">{stripHtml(q.stemHtml).slice(0, 90)}</div>
+      ),
     },
     {
       title: '答案 / 测试点',
@@ -222,14 +237,21 @@ export function TeacherExam() {
     },
     {
       title: '分值',
-      width: 100,
+      width: 108,
       render: (_, q) => <ScoreCell question={q} onSave={(value) => updateScore(q, value)} />,
     },
     {
       title: '',
       width: 56,
       render: (_, q) => (
-        <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeQuestion(q)} />
+        <Button
+          type="text"
+          danger
+          size="small"
+          disabled={locked}
+          icon={<DeleteOutlined />}
+          onClick={() => removeQuestion(q)}
+        />
       ),
     },
   ];
@@ -242,10 +264,12 @@ export function TeacherExam() {
             返回考试列表
           </Button>
         }
+        eyebrow="Exam"
         title={exam.title}
         subtitle={
           <Space size={10} wrap>
             <ExamStatusTag status={exam.status} />
+            {exam.resultsPublished ? <Pill tone="green">成绩已发布</Pill> : null}
             <span>
               共 {exam.questionCount} 题 · 合计 {exam.totalScore} 分 · {exam.submissionCount} 人提交
             </span>
@@ -263,6 +287,9 @@ export function TeacherExam() {
             </>
           ) : (
             <>
+              <Button icon={<BarChartOutlined />} onClick={() => navigate(`/teacher/analytics?examId=${exam.id}`)}>
+                学情看板
+              </Button>
               {exam.status === 'published' ? <Button onClick={closeExam}>结束考试</Button> : null}
               <Button type="primary" onClick={() => navigate(`/teacher/exam/${exam.id}/grading`)}>
                 批改与出分
@@ -273,7 +300,20 @@ export function TeacherExam() {
       />
 
       {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
-      {notice ? <Alert type="success" showIcon message={notice} className="mb-4" /> : null}
+      {notice ? <Alert type="success" showIcon message={notice} className="mb-4" closable onClose={() => setNotice('')} /> : null}
+
+      <Card className="mb-5" styles={{ body: { padding: '18px 22px' } }}>
+        <Steps
+          size="small"
+          current={Math.min(stepCurrent, 4)}
+          items={[
+            { title: '导入题目', description: `${exam.questionCount} 题` },
+            { title: '发布考试', description: '学生开始作答' },
+            { title: '批改与校准', description: `${exam.submissionCount} 份答卷` },
+            { title: '成绩发布', description: exam.resultsPublished ? '已发布' : '待发布' },
+          ]}
+        />
+      </Card>
 
       <Card
         className="mb-5"
@@ -284,33 +324,43 @@ export function TeacherExam() {
           </Button>
         }
       >
-        <p className="mb-4 text-[12.5px] leading-6 text-[#7a839a]">
+        <p className="mb-4 text-[12.5px] leading-6 text-[#7b86a0]">
           按模板填写后上传，系统会先给出解析预览，确认无误再写入试卷。
+          {locked ? ' 当前已有学生提交，题目与分值已锁定，不能重新导入。' : ''}
         </p>
 
         <Upload.Dragger {...uploadProps} style={{ background: '#fafbff' }}>
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
-          <p className="ant-upload-text">{importing ? '正在解析…' : '把 .docx 拖到这里，或点击选择文件'}</p>
+          <p className="ant-upload-text">{importing ? '正在解析…' : locked ? '已有学生提交，暂不可重新导入' : '把 .docx 拖到这里，或点击选择文件'}</p>
           <p className="ant-upload-hint">
-            {hasQuestions
-              ? '重新导入会覆盖当前全部题目；已产生学生提交后不可再导入。'
-              : '支持单选、多选、判断、填空、简答、代码六种题型。'}
+            {locked
+              ? '如需修改题目，请先删除学生提交记录（当前版本未开放）或新建一场考试。'
+              : hasQuestions
+                ? '重新导入会覆盖当前全部题目；已产生学生提交后不可再导入。'
+                : '支持单选、多选、判断、填空、简答、代码六种题型。'}
           </p>
         </Upload.Dragger>
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button size="small" loading={importing} onClick={() => runImport({ sample: true })}>
+          <Button size="small" loading={importing} disabled={locked} onClick={() => runImport({ sample: true })}>
             使用示例模板试导入
           </Button>
-          <span className="text-[12px] text-[#7a839a]">示例模板包含六种题型，可用于快速体验完整流程。</span>
+          <span className="text-[12px] text-[#7b86a0]">示例模板包含六种题型，可用于快速体验完整流程。</span>
         </div>
       </Card>
 
       <Card
         title="题目列表"
-        extra={<Tag>{exam.questions.length} 题</Tag>}
+        extra={
+          <Space size={8}>
+            <Tag bordered={false}>{exam.questions.length} 题</Tag>
+            <Tag bordered={false} color="blue">
+              合计 {scoreText(exam.totalScore)} 分
+            </Tag>
+          </Space>
+        }
         styles={{ body: { padding: hasQuestions ? 0 : 24 } }}
       >
         {hasQuestions ? (
@@ -320,7 +370,7 @@ export function TeacherExam() {
             columns={columns}
             dataSource={exam.questions}
             pagination={false}
-            scroll={{ x: 780 }}
+            scroll={{ x: 820 }}
           />
         ) : (
           <Empty description="试卷还没有题目，上传 Word 或使用示例模板试导入" />
@@ -345,10 +395,10 @@ export function TeacherExam() {
         {importResult ? (
           <>
             <Space size={8} wrap className="mb-3">
-              <Tag color="blue">{importResult.counts.total} 题</Tag>
-              <Tag color="green">{importResult.counts.totalScore} 分</Tag>
-              {importResult.counts.errors > 0 ? <Tag color="red">{importResult.counts.errors} 个错误</Tag> : null}
-              {importResult.counts.warnings > 0 ? <Tag color="gold">{importResult.counts.warnings} 个警告</Tag> : null}
+              <Pill tone="blue">{importResult.counts.total} 题</Pill>
+              <Pill tone="green">{importResult.counts.totalScore} 分</Pill>
+              {importResult.counts.errors > 0 ? <Pill tone="red">{importResult.counts.errors} 个错误</Pill> : null}
+              {importResult.counts.warnings > 0 ? <Pill tone="amber">{importResult.counts.warnings} 个警告</Pill> : null}
             </Space>
 
             {importResult.notes.length ? (
@@ -372,7 +422,7 @@ export function TeacherExam() {
                     <div className="whitespace-pre-wrap text-[13.5px] leading-7 text-[#39445c]">
                       {stripHtml(q.stemHtml).slice(0, 220)}
                     </div>
-                    <div className="mt-2 text-[12px] text-[#7a839a]">
+                    <div className="mt-2 text-[12px] text-[#7b86a0]">
                       {q.type === 'code'
                         ? `语言：${q.codeSpec?.languages.join(', ') ?? 'python'}`
                         : `答案：${formatAnswerSpec(q.type, q.answer, q.options).replace(/\n/g, '；').slice(0, 90)}`}

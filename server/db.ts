@@ -12,6 +12,14 @@ db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
 db.exec(`
+CREATE TABLE IF NOT EXISTS classes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  grade TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
@@ -19,6 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   role TEXT NOT NULL,
   student_no TEXT,
+  class_id INTEGER REFERENCES classes(id),
   created_at TEXT NOT NULL
 );
 
@@ -149,21 +158,72 @@ const STUDENT_NAMES = [
   '蔡子昂', '潘安琪', '田睿哲', '董欣妍', '苏浩然', '卢佳怡',
 ];
 
+export const CLASS_SEEDS = [
+  { name: '高一(1)班', grade: '高一', sortOrder: 1 },
+  { name: '高一(2)班', grade: '高一', sortOrder: 2 },
+  { name: '高一(3)班', grade: '高一', sortOrder: 3 },
+];
+
+/** 老库升级：补齐后来新增的列（SQLite 不支持 ADD COLUMN IF NOT EXISTS）。 */
+function ensureColumn(table: string, column: string, definition: string): void {
+  const cols = all<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (!cols.some((col) => col.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+  }
+}
+
+function ensureClasses(): { id: number; name: string }[] {
+  ensureColumn('users', 'class_id', 'class_id INTEGER REFERENCES classes(id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_users_class ON users(class_id)');
+
+  const ts = nowIso();
+  const existing = get<{ c: number }>('SELECT COUNT(*) AS c FROM classes')?.c ?? 0;
+  if (existing === 0) {
+    for (const item of CLASS_SEEDS) {
+      run(
+        'INSERT OR IGNORE INTO classes (name, grade, sort_order, created_at) VALUES (?, ?, ?, ?)',
+        item.name,
+        item.grade,
+        item.sortOrder,
+        ts,
+      );
+    }
+  }
+  return all<{ id: number; name: string }>('SELECT id, name FROM classes ORDER BY sort_order, id');
+}
+
+/** 为还没有班级的学生按人数均匀分班（兼容已经存在的单班数据）。 */
+function assignMissingClassIds(): void {
+  const classes = ensureClasses();
+  if (!classes.length) return;
+  const students = all<{ id: number }>(
+    "SELECT id FROM users WHERE role = 'student' AND class_id IS NULL ORDER BY student_no IS NULL, student_no, id",
+  );
+  students.forEach((student, index) => {
+    const classId = classes[Math.min(classes.length - 1, Math.floor((index * classes.length) / students.length))].id;
+    run('UPDATE users SET class_id = ? WHERE id = ?', classId, student.id);
+  });
+}
+
 export function seed(): void {
+  const classes = ensureClasses();
+  assignMissingClassIds();
+
   const row = get<{ c: number }>('SELECT COUNT(*) AS c FROM users');
   if (row && row.c > 0) return;
 
   const ts = nowIso();
   run(
-    'INSERT INTO users (username, password_hash, name, role, student_no, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    'teacher', hashPassword('123456'), '张老师', 'teacher', null, ts,
+    'INSERT INTO users (username, password_hash, name, role, student_no, class_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'teacher', hashPassword('123456'), '张老师', 'teacher', null, null, ts,
   );
 
   STUDENT_NAMES.forEach((name, i) => {
     const no = String(20250301 + i);
+    const classId = classes[Math.min(classes.length - 1, Math.floor((i * classes.length) / STUDENT_NAMES.length))].id;
     run(
-      'INSERT INTO users (username, password_hash, name, role, student_no, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      `s${String(i + 1).padStart(2, '0')}`, hashPassword('123456'), name, 'student', no, ts,
+      'INSERT INTO users (username, password_hash, name, role, student_no, class_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      `s${String(i + 1).padStart(2, '0')}`, hashPassword('123456'), name, 'student', no, classId, ts,
     );
   });
 }

@@ -162,6 +162,8 @@ export interface SubmissionRow {
   studentId: number;
   studentName: string;
   studentNo: string;
+  classId: number | null;
+  className: string | null;
   status: SubmissionStatus;
   autoScore: number | null;
   finalScore: number | null;
@@ -216,4 +218,175 @@ export interface StudentResultPage {
     explanationHtml: string | null;
     raw: StudentAnswer | null;
   }>;
+}
+
+/* ── 班级与学情看板 ───────────────────────────────────── */
+
+export interface ClassInfo {
+  id: number;
+  name: string;
+  grade: string | null;
+  studentCount: number;
+}
+
+export interface StudentInfo {
+  id: number;
+  name: string;
+  studentNo: string;
+  classId: number | null;
+  className: string | null;
+}
+
+export interface AnalyticsExamOption {
+  id: number;
+  title: string;
+  status: ExamStatus;
+  totalScore: number;
+  questionCount: number;
+  submittedCount: number;
+  resultsPublished: boolean;
+  createdAt: string;
+}
+
+export interface AnalyticsMeta {
+  exams: AnalyticsExamOption[];
+  classes: ClassInfo[];
+  students: StudentInfo[];
+}
+
+export interface ScoreBucket {
+  label: string;
+  min: number;
+  max: number;
+  count: number;
+}
+
+export interface ClassAnalytics {
+  id: number;
+  name: string;
+  totalStudents: number;
+  participants: number;
+  avg: number;
+  max: number;
+  min: number;
+  passRate: number;
+  excellentRate: number;
+  buckets: number[];
+}
+
+export interface StudentAnalytics {
+  id: number;
+  submissionId: number;
+  name: string;
+  studentNo: string;
+  classId: number | null;
+  className: string | null;
+  score: number;
+  totalScore: number;
+  rank: number;
+  classRank: number;
+  classSize: number;
+  answered: number;
+  questionCount: number;
+  needsReview: number;
+  submittedAt: string | null;
+  questionScores: (number | null)[];
+}
+
+export interface QuestionAnalytics {
+  id: number;
+  seq: number;
+  type: QuestionType;
+  score: number;
+  avgScore: number;
+  scoreRate: number;
+  fullRate: number;
+  zeroRate: number;
+  answered: number;
+}
+
+export interface TrendPoint {
+  examId: number;
+  title: string;
+  date: string;
+  avg: number;
+  max: number;
+  min: number;
+  participants: number;
+}
+
+export interface TypeAnalytics {
+  type: QuestionType;
+  label: string;
+  totalScore: number;
+  avgScore: number;
+  rate: number;
+}
+
+export interface AnalyticsPayload {
+  exam: AnalyticsExamOption & { description: string; durationMin: number };
+  filters: { classIds: number[]; studentIds: number[] };
+  kpi: {
+    participants: number;
+    expected: number;
+    avg: number;
+    max: number;
+    min: number;
+    passRate: number;
+    excellentRate: number;
+    submitRate: number;
+    avgAnsweredRate: number;
+  };
+  distribution: ScoreBucket[];
+  classes: ClassAnalytics[];
+  students: StudentAnalytics[];
+  questions: QuestionAnalytics[];
+  typeSummary: TypeAnalytics[];
+  trend: TrendPoint[];
+  generatedAt: string;
+}
+
+export interface StudentProfileQuestion {
+  id: number;
+  seq: number;
+  type: QuestionType;
+  score: number;
+  maxScore: number;
+  classAvg: number;
+}
+
+export interface StudentProfileExam {
+  examId: number;
+  title: string;
+  status: ExamStatus;
+  totalScore: number;
+  score: number;
+  classAvg: number;
+  classRank: number;
+  classSize: number;
+  submittedAt: string | null;
+}
+
+export interface StudentProfile {
+  student: StudentInfo;
+  summary: {
+    taken: number;
+    avg: number;
+    best: number;
+    worst: number;
+    latestRank: number | null;
+    latestClassSize: number;
+    latestDelta: number | null;
+  };
+  exams: StudentProfileExam[];
+  latest: {
+    examId: number;
+    title: string;
+    totalScore: number;
+    score: number;
+    classAvg: number;
+    classRank: number;
+    classSize: number;
+    questions: StudentProfileQuestion[];
+  } | null;
 }
