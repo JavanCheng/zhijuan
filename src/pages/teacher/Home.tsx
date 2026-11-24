@@ -16,7 +16,6 @@ import {
   Tooltip,
 } from 'antd';
 import {
-  ArrowRightOutlined,
   BarChartOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -325,19 +324,6 @@ export function TeacherHome() {
           })}
         </Row>
       )}
-
-      <div className="mt-5 flex flex-wrap items-center gap-2 rounded-2xl border border-[#e9ecf4] bg-white px-4 py-3 text-[11.5px] text-[#7b86a0]">
-        <span className="font-medium text-[#4b5670]">课堂闭环</span>
-        <span>Word 出卷</span>
-        <ArrowRightOutlined className="text-[9px] text-[#c7cedd]" />
-        <span>发布作答</span>
-        <ArrowRightOutlined className="text-[9px] text-[#c7cedd]" />
-        <span>自动评分</span>
-        <ArrowRightOutlined className="text-[9px] text-[#c7cedd]" />
-        <span>教师校准</span>
-        <ArrowRightOutlined className="text-[9px] text-[#c7cedd]" />
-        <span>学情看板</span>
-      </div>
 
       <Modal
         open={creating}

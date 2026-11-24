@@ -210,33 +210,6 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.runtime-chip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 11px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-
-.runtime-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #2bd4a0;
-  box-shadow: 0 0 0 3px rgba(43, 212, 160, 0.14);
-  flex: none;
-}
-
-.runtime-dot.is-off {
-  background: #f2a33c;
-  box-shadow: 0 0 0 3px rgba(242, 163, 60, 0.14);
-}
-
 .app-topbar.ant-layout-header {
   position: sticky;
   top: 0;
@@ -267,26 +240,6 @@ body {
 
 .topbar-sep {
   color: #cfd6e6;
-}
-
-.runtime-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 30px;
-  padding: 0 11px;
-  border-radius: 999px;
-  background: #f1fbf7;
-  border: 1px solid #d4f3e7;
-  color: #0b7a56;
-  font-size: 11.5px;
-  white-space: nowrap;
-}
-
-.runtime-pill.is-off {
-  background: #fff8ed;
-  border-color: #f7e3c2;
-  color: #a3680d;
 }
 
 .user-trigger {

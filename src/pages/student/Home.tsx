@@ -5,7 +5,6 @@ import {
   ClockCircleOutlined,
   FileTextOutlined,
   PlayCircleOutlined,
-  TeamOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
 import { api } from '../../api';
@@ -185,14 +184,6 @@ export function StudentHome() {
           })}
         </Row>
       )}
-
-      <div className="mt-5 flex flex-wrap items-center gap-2 rounded-2xl border border-[#e9ecf4] bg-white px-4 py-3 text-[11.5px] text-[#7b86a0]">
-        <TeamOutlined />
-        <span>
-          {user?.className ? `你所在的班级：${user.className}` : '暂未分班'} · 学号 {user?.studentNo ?? '—'} ·
-          作答记录自动保存，提交后不可修改
-        </span>
-      </div>
     </Page>
   );
 }

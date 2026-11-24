@@ -19,7 +19,6 @@ import {
   BarChartOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
-  ReloadOutlined,
   SearchOutlined,
   TeamOutlined,
   TrophyOutlined,
@@ -27,7 +26,7 @@ import {
 import { api, post } from '../../api';
 import type { ExamDetailTeacher, SubmissionRow } from '../../../shared/types';
 import { ExamStatusTag, Page, PageHeader, Pill, StatCard, SubmissionStatusTag } from '../../ui';
-import { formatDate, formatTime, scoreText } from '../../format';
+import { formatDate, scoreText } from '../../format';
 
 const { Text } = Typography;
 
@@ -52,7 +51,6 @@ export function TeacherGrading() {
   const [filter, setFilter] = useState<'all' | 'review'>('all');
   const [classFilter, setClassFilter] = useState<number | 'all'>('all');
   const [keyword, setKeyword] = useState('');
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -63,7 +61,6 @@ export function TeacherGrading() {
       setExam(detail);
       setRows(subs);
       setError('');
-      setLastUpdated(new Date().toISOString());
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
     }
@@ -258,10 +255,6 @@ export function TeacherGrading() {
           <span className="flex flex-wrap items-center gap-2.5">
             <ExamStatusTag status={exam.status} />
             {exam.resultsPublished ? <Pill tone="green">成绩已发布</Pill> : null}
-            <span className="inline-flex items-center gap-1.5">
-              <ReloadOutlined className="text-[11px]" />
-              每 3 秒自动刷新{lastUpdated ? ` · 最近 ${formatTime(lastUpdated)}` : ''}
-            </span>
           </span>
         }
         extra={

@@ -34,12 +34,6 @@ function RouteLoading() {
   );
 }
 
-interface RuntimeInfo {
-  python: string | null;
-  pythonSource: string;
-  node: string;
-}
-
 const TEACHER_NAV = [
   { to: '/teacher', end: true, label: '考试管理', icon: <DashboardOutlined /> },
   { to: '/teacher/analytics', end: false, label: '学情看板', icon: <BarChartOutlined /> },
@@ -61,15 +55,10 @@ function TeacherShell() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => window.innerWidth < 992);
   const [mobile, setMobile] = useState(() => window.innerWidth < 992);
-  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
 
   useEffect(() => {
     setCollapsed(window.innerWidth < 992);
     setMobile(window.innerWidth < 992);
-    fetch('/api/auth/runtime')
-      .then((res) => (res.ok ? res.json() : null))
-      .then(setRuntime)
-      .catch(() => setRuntime(null));
   }, []);
 
   useEffect(() => {
@@ -147,18 +136,7 @@ function TeacherShell() {
           <div className="flex-1" />
 
           <div className="sider-footer">
-            <div className="runtime-chip">
-              <span className={`runtime-dot ${runtime && !runtime.python ? 'is-off' : ''}`} />
-              <div className="min-w-0">
-                <div className="truncate text-white/75">
-                  {runtime == null ? '检测代码运行时…' : runtime.python ? '代码运行时就绪' : '代码运行时未就绪'}
-                </div>
-                <div className="truncate text-[10.5px] text-white/35">
-                  {runtime?.python ? runtime.pythonSource : '代码题将无法评测'}
-                </div>
-              </div>
-            </div>
-            <div className="mt-2 px-1 text-[10.5px] tracking-wide text-white/25">v0.3 · 局域网版</div>
+            <div className="px-1 text-[10.5px] tracking-wide text-white/25">v0.3 · 局域网版</div>
           </div>
         </div>
       </Layout.Sider>
@@ -179,12 +157,6 @@ function TeacherShell() {
           </div>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            {runtime ? (
-              <span className={`runtime-pill hidden md:inline-flex ${runtime.python ? '' : 'is-off'}`}>
-                <span className={`runtime-dot ${runtime.python ? '' : 'is-off'}`} style={{ width: 6, height: 6 }} />
-                {runtime.python ? '运行时正常' : '运行时异常'}
-              </span>
-            ) : null}
             <Dropdown
               trigger={['click']}
               menu={{

@@ -23,7 +23,7 @@
 
 ![学生登录](docs/images/09-student-login.png)
 
-**教师端 · 考试管理**（顶部实时显示代码运行时状态）
+**教师端 · 考试管理**（考试概览与建卷入口）
 
 ![教师端首页](docs/images/02-teacher-home.png)
 
@@ -275,7 +275,7 @@ A. 键盘　　B. 显示器　　C. 鼠标　　D. 扫描仪
 2. 项目内置 `runtime/python/python.exe`（仓库已带 Python 3.12.10 embeddable）
 3. 系统 `PATH` 中的 `python` / `python3`
 
-启动时控制台会打印运行时状态，教师端首页也会显示「代码运行时就绪 / 未检测到」。
+启动时控制台会打印运行时状态；若未检测到 Python，教师端首页会显示错误提示，代码题将无法评测。
 
 > `runtime/` 已被 `.gitignore` 忽略（避免把二进制塞进仓库）。重新 clone 或换机器时，请把 Python 放到 `runtime/python/`，或设置 `PYTHON_BIN`，或直接使用系统 Python。
 

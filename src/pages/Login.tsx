@@ -13,7 +13,6 @@ import {
   ReadOutlined,
   SafetyCertificateOutlined,
   TeamOutlined,
-  ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { homeOf, useAuth } from '../auth';
@@ -224,11 +223,6 @@ export function LoginChooser() {
         <SafetyCertificateOutlined className="mt-0.5 text-[#3358e8]" />
         <span>学生账号由教师在「班级管理」中导入或手动添加，未录入的学生无法登录。</span>
       </div>
-
-      <div className="mt-6 flex items-center gap-1.5 text-[11.5px] text-[#a0a8ba]">
-        <ThunderboltOutlined />
-        客观题秒级判分 · 代码题真实评测
-      </div>
     </LoginShell>
   );
 }
@@ -304,11 +298,6 @@ export function TeacherLogin() {
             填入
           </Button>
         </div>
-      </div>
-
-      <div className="mt-4 flex items-center gap-1.5 text-[11.5px] text-[#a0a8ba]">
-        <SafetyCertificateOutlined />
-        教师账号与学生入口相互独立
       </div>
 
       <RoleSwitch to="/student/login" label="我是学生" />
