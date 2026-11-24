@@ -324,6 +324,34 @@ body {
   }
 }
 
+.exam-title-button {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1a2338;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.exam-title-button:hover {
+  color: #3358e8;
+}
+
+.exam-title-button:focus-visible {
+  outline: 2px solid #9db2ff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* ── 卡片与统计块 ───────────────────────────────────── */
 .lift-card {
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;

@@ -60,7 +60,7 @@ await shot(teacher, 't03-create-modal');
 await teacher.locator('.ant-modal-close').first().click();
 await teacher.waitForTimeout(300);
 
-await teacher.click('button:has-text("试卷详情")');
+await teacher.click('table tbody tr.ant-table-row');
 await teacher.waitForSelector('text=题目列表');
 await shot(teacher, 't04-exam-detail', true);
 

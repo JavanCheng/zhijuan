@@ -53,7 +53,7 @@ await teacher.waitForSelector('text=考试管理');
 await shot(teacher, '02-teacher-home', true);
 console.log('  教师端首页 OK');
 
-await teacher.click('button:has-text("试卷详情")');
+await teacher.click('table tbody tr.ant-table-row');
 await teacher.waitForSelector('text=题目列表');
 await shot(teacher, '03-teacher-exam', true);
 console.log('  试卷详情 OK');
@@ -118,7 +118,7 @@ console.log('  提交完成');
 
 // ── 教师批改并发布 ──────────────────────────────────────
 await teacher.goto(gradingUrl, { waitUntil: 'networkidle' });
-await teacher.waitForSelector('table tbody tr');
+await teacher.waitForSelector('table tbody tr.ant-table-row');
 await teacher.waitForTimeout(1200);
 await shot(teacher, '09-teacher-grading-list', true);
 
