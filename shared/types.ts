@@ -390,3 +390,57 @@ export interface StudentProfile {
     questions: StudentProfileQuestion[];
   } | null;
 }
+
+/* ── 班级与学生名册 ───────────────────────────────────── */
+
+export interface ManagedClass {
+  id: number;
+  name: string;
+  grade: string | null;
+  sortOrder: number;
+  activeCount: number;
+  inactiveCount: number;
+  totalCount: number;
+}
+
+export interface ManagedStudent {
+  id: number;
+  name: string;
+  studentNo: string;
+  classId: number | null;
+  className: string | null;
+  isActive: boolean;
+  createdAt: string;
+  submissionCount: number;
+}
+
+export interface RosterOverview {
+  classes: ManagedClass[];
+  students: ManagedStudent[];
+  totalStudents: number;
+  activeStudents: number;
+  inactiveStudents: number;
+  unassignedStudents: number;
+}
+
+export interface RosterIssue {
+  sheet: string;
+  row: number;
+  level: 'error' | 'warning';
+  message: string;
+}
+
+export interface RosterImportSummary {
+  rowsRead: number;
+  classesCreated: number;
+  studentsCreated: number;
+  studentsUpdated: number;
+  studentsReactivated: number;
+}
+
+export interface RosterImportResult {
+  ok: boolean;
+  summary: RosterImportSummary;
+  errors: RosterIssue[];
+  warnings: RosterIssue[];
+}

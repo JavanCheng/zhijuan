@@ -29,7 +29,7 @@ Write-Host "   服务正常；Python 运行时：$($health.runtime.python)"
 if (-not $health.runtime.python) { throw '代码运行时未就绪' }
 
 Step '1. 教师登录'
-$login = Invoke-RestMethod -Uri "$base/api/auth/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 'teacher'; password = '123456' }) -SessionVariable tea
+$login = Invoke-RestMethod -Uri "$base/api/auth/teacher/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 'teacher'; password = '123456' }) -SessionVariable tea
 Write-Host "   登录成功：$($login.user.name)"
 
 Step '2. 新建考试'
@@ -49,7 +49,7 @@ Api 'Post' "/api/teacher/exams/$($exam.id)/publish" @{} $tea | Out-Null
 Write-Host '   考试已发布'
 
 Step '5. 学生登录并获取试卷'
-$stu = Invoke-RestMethod -Uri "$base/api/auth/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 's01'; password = '123456' }) -SessionVariable stuSession
+$stu = Invoke-RestMethod -Uri "$base/api/auth/student/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ name = '李子涵'; studentNo = '20250301' }) -SessionVariable stuSession
 Write-Host "   学生：$($stu.user.name) ($($stu.user.studentNo))"
 $page = Api 'Get' "/api/student/exams/$($exam.id)" $null $stuSession
 $leaked = $page.questions[0].PSObject.Properties.Name -contains 'answer'
@@ -110,7 +110,7 @@ Write-Host "   学生得分：$($result.score) / $($result.totalScore)（发布�
 $result.questions | ForEach-Object { Write-Host ("   #{0} [{1}] {2}/{3}" -f $_.seq, $_.type, $_.finalScore, $_.score) }
 
 Step '12. 第二个学生故意答错，验证判错与证据链'
-$stu2 = Invoke-RestMethod -Uri "$base/api/auth/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 's02'; password = '123456' }) -SessionVariable stu2Session
+$stu2 = Invoke-RestMethod -Uri "$base/api/auth/student/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ name = '王梓萱'; studentNo = '20250302' }) -SessionVariable stu2Session
 $page2 = Api 'Get' "/api/student/exams/$($exam.id)" $null $stu2Session
 $wrong = @{}
 foreach ($q in $page2.questions) {

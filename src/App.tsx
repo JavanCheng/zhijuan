@@ -7,15 +7,17 @@ import {
   LogoutOutlined,
   MenuOutlined,
   RightOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, Landing, RequireRole } from './auth';
 import { BrandMark, Pill } from './ui';
-import { Login } from './pages/Login';
+import { LoginChooser, StudentLogin, TeacherLogin } from './pages/Login';
 import { TeacherHome } from './pages/teacher/Home';
 import { TeacherExam } from './pages/teacher/ExamDetail';
 import { TeacherGrading } from './pages/teacher/Grading';
 import { TeacherSubmission } from './pages/teacher/Submission';
+import { TeacherClasses } from './pages/teacher/Classes';
 import { StudentHome } from './pages/student/Home';
 import { StudentExam } from './pages/student/Exam';
 import { StudentResult } from './pages/student/Result';
@@ -41,10 +43,12 @@ interface RuntimeInfo {
 const TEACHER_NAV = [
   { to: '/teacher', end: true, label: '考试管理', icon: <DashboardOutlined /> },
   { to: '/teacher/analytics', end: false, label: '学情看板', icon: <BarChartOutlined /> },
+  { to: '/teacher/classes', end: false, label: '班级管理', icon: <TeamOutlined /> },
 ];
 
 function teacherSection(pathname: string): string {
   if (pathname.startsWith('/teacher/analytics')) return '学情看板';
+  if (pathname.startsWith('/teacher/classes')) return '班级管理';
   if (/^\/teacher\/exam\/\d+\/grading/.test(pathname)) return '批改与出分';
   if (/^\/teacher\/exam\/\d+/.test(pathname)) return '试卷详情';
   if (/^\/teacher\/submission\/\d+/.test(pathname)) return '单份批改';
@@ -76,7 +80,7 @@ function TeacherShell() {
 
   async function signOut() {
     await logout();
-    navigate('/login', { replace: true });
+    navigate('/teacher/login', { replace: true });
   }
 
   return (
@@ -117,7 +121,9 @@ function TeacherShell() {
                 className={({ isActive }) => {
                   const active =
                     item.to === '/teacher'
-                      ? location.pathname.startsWith('/teacher') && !location.pathname.startsWith('/teacher/analytics')
+                      ? location.pathname.startsWith('/teacher') &&
+                        !location.pathname.startsWith('/teacher/analytics') &&
+                        !location.pathname.startsWith('/teacher/classes')
                       : isActive;
                   return `sider-nav-item ${active ? 'is-active' : ''}`;
                 }}
@@ -152,7 +158,7 @@ function TeacherShell() {
                 </div>
               </div>
             </div>
-            <div className="mt-2 px-1 text-[10.5px] tracking-wide text-white/25">v0.2 · 局域网版</div>
+            <div className="mt-2 px-1 text-[10.5px] tracking-wide text-white/25">v0.3 · 局域网版</div>
           </div>
         </div>
       </Layout.Sider>
@@ -219,7 +225,7 @@ function StudentShell() {
 
   async function signOut() {
     await logout();
-    navigate('/login', { replace: true });
+    navigate('/student/login', { replace: true });
   }
 
   return (
@@ -292,7 +298,9 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
+      <Route path="/login" element={<LoginChooser />} />
+      <Route path="/teacher/login" element={<TeacherLogin />} />
+      <Route path="/student/login" element={<StudentLogin />} />
 
       <Route
         path="/teacher"
@@ -303,14 +311,12 @@ export function App() {
         }
       >
         <Route index element={<TeacherHome />} />
-        <Route
-          path="analytics"
-          element={
-            <Suspense fallback={<RouteLoading />}>
-              <TeacherAnalytics />
-            </Suspense>
-          }
-        />
+        <Route path="analytics" element={
+          <Suspense fallback={<RouteLoading />}>
+            <TeacherAnalytics />
+          </Suspense>
+        } />
+        <Route path="classes" element={<TeacherClasses />} />
         <Route path="exam/:id" element={<TeacherExam />} />
         <Route path="exam/:id/grading" element={<TeacherGrading />} />
         <Route path="submission/:id" element={<TeacherSubmission />} />

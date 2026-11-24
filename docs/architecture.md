@@ -22,9 +22,10 @@
 ┌───────────────▼────────────────────────────────────────────────┐
 │ Fastify 5（server/index.ts）                                    │
 │  ├─ 静态托管 dist/ + SPA 兜底（非 /api 全部回 index.html）        │
-│  ├─ routes/auth       登录、退出、me、runtime                    │
+│  ├─ routes/auth       教师登录、学生登录、退出、me、runtime        │
 │  ├─ routes/teacher    考试、导入、题目、批改、发布                │
-│  ├─ routes/analytics  学情看板、学生画像、班级调整                │
+│  ├─ routes/classes    班级、学生名册、Excel/CSV 导入              │
+│  ├─ routes/analytics  学情看板、学生画像                          │
 │  └─ routes/student    取卷、草稿、提交、成绩                      │
 └───────┬───────────────────────┬────────────────────────────────┘
         │                       │
@@ -48,6 +49,29 @@
 ---
 
 ## 3. 关键流程
+
+### 3.0 登录与名册
+
+```text
+教师 /teacher/login
+  → POST /auth/teacher/login { username, password }
+  → 校验 role = teacher + scrypt 口令 + is_active
+  → 签发 HttpOnly Cookie
+
+学生 /student/login
+  → POST /auth/student/login { name, studentNo }
+  → 校验 role = student、student_no + name 与名册完全匹配、is_active = 1
+  → 未录入 / 已停用 → 401 / 403
+  → 签发 HttpOnly Cookie
+
+教师导入名册
+  → POST /teacher/students/import（multipart：.xlsx / .xls / .csv）
+  → server/import/students.ts 解析表头、兼容「工作表名=班级」
+  → 行级校验（必填、长度、文件内学号唯一）
+  → 有错误：整批不写入，返回 errors[]
+  → 无错误：事务内创建缺失班级、按学号新增/更新学生、is_active = 1
+  → 返回 summary（读取行数、新建/更新/恢复人数）
+```
 
 ### 3.1 出卷
 
@@ -103,10 +127,10 @@
        最近 8 场考试的平均得分率趋势
 教师 GET /teacher/students/:id/profile
   → 学生历次成绩、班级平均、班级排名、最近一次逐题对比
-教师 POST /teacher/classes { name }
-  → 新建班级（写入 audit_logs）
-教师 PATCH /teacher/students/:id { classId }
-  → 修改 users.class_id，写 audit_logs
+教师 GET /teacher/classes/overview
+  → 班级 + 学生名册（含启用/停用、作答记录数）
+教师 POST/PATCH/DELETE /teacher/classes、/teacher/students
+  → 班级与学生 CRUD；有作答记录的学生删除时转为停用
 ```
 
 看板数据全部由服务端按当前筛选口径计算，前端只负责渲染 ECharts 选项；学生筛选与班级筛选可以叠加。
@@ -118,7 +142,7 @@
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
 | `classes` | name, grade, sort_order | 班级字典，按 sort_order 展示 |
-| `users` | username, password_hash, name, role, student_no, class_id | 师生同表，role 区分；学生通过 class_id 归属班级 |
+| `users` | username, password_hash, name, role, student_no, class_id, is_active | 师生同表；学生通过 class_id 归属班级，student_no 唯一，is_active 控制登录 |
 | `exams` | title, teacher_id, status, duration_min, start_at, end_at, results_published | 状态机 draft→published→closed |
 | `questions` | exam_id, seq, type, stem_html, score, options_json, answer_json, explanation_html, code_spec_json | 答案与代码配置存 JSON |
 | `test_cases` | question_id, seq, stdin, expected_stdout, score, visible | visible=1 学生可见 |
@@ -133,7 +157,9 @@
 - `answers.raw_json` 按题型存不同结构（`{key}` / `{keys}` / `{value}` / `{blanks}` / `{text}` / `{language,code}`）。
 - `auto_detail_json` 保存可解释证据，教师端直接渲染。
 - 题目/测试点删除依赖外键 `ON DELETE CASCADE`，并发一致性靠单进程串行写。
-- 老库升级：启动时检测 `users.class_id`，缺失则 `ALTER TABLE`，并把未分班学生按人数均匀分配到默认班级。
+- 老库升级：启动时检测 `users.class_id`、`users.is_active`，缺失则 `ALTER TABLE`；并尝试创建 `student_no` 唯一索引，未分班学生按人数均匀分配。
+- 学生登录不验证密码：`student_no + name` 命中名册且 `is_active = 1` 即放行；适用于可信课堂，公网部署需加密码或统一身份认证。
+- 名册导入按 `student_no` 做幂等 upsert：已存在则更新姓名/班级并重新启用；文件内重复学号直接阻断整批导入。
 
 ---
 
@@ -168,9 +194,10 @@ server/runner/run.ts     执行器：进程、超时、输出截断、清理
 
 ## 6. 前端结构
 
-- 路由按角色分区，`RequireRole` 负责未登录跳转与越权重定向。
+- 路由按角色分区，`RequireRole` 负责未登录跳转与越权重定向；教师/学生分别跳转 `/teacher/login`、`/student/login`，`/login` 为入口选择页。
 - 数据获取用 `fetch` 封装（`src/api.ts`），页面自行管理状态，未引入额外状态库。
-- 教师端：列表 → 试卷（导入/分值）→ 批改列表 → 单份批改，四层线性导航；学情看板独立一级入口。
+- 教师端：考试管理、学情看板、班级管理三个一级入口；试卷 → 批改列表 → 单份批改用例层级导航。
+- 班级管理：班级卡片 + 学生名册表格，支持 Excel/CSV 上传、模板下载、手动增改、启停、软删除。
 - 学生端：列表 → 作答（单题 + 答题卡 + 倒计时 + 自动保存）→ 成绩（轮询至发布）。
 - 组件全部来自 **antd v6**（Layout / Menu / Table / Form / Upload / Modal / Statistic / Result 等），通过 `ConfigProvider` 统一主题色、圆角与字体；`src/theme.ts` 是唯一的主题入口。
 - 布局与间距使用 **Tailwind CSS v4** 工具类（未引入 preflight，避免覆盖 antd 基础样式；在 `src/styles.css` 中补了边框与盒模型重置）。
@@ -190,7 +217,10 @@ server/runner/run.ts     执行器：进程、超时、输出截断、清理
 | 重复提交 | 提交接口幂等：非 `in_progress` 直接返回已提交状态 |
 | 草稿丢失 | 前端 900ms 防抖自动保存 + 离开页面二次确认 |
 | 重新导入覆盖成绩 | 已存在提交时拒绝重新导入 / 删题 |
-| 弱口令 | scrypt 加盐哈希；演示账号统一 `123456`，上线前应强制改密 |
+| 未录入学生登录 | 学生登录仅按 `student_no + name` 查 `role='student'` 且 `is_active=1`，无自助注册 |
+| 学生冒用身份 | 当前为课堂信任模式，姓名+学号可被同学知晓；公网部署需加密码 / 验证码 / SSO |
+| 弱口令 | 教师口令 scrypt 加盐哈希；演示账号 `teacher/123456`，上线前应强制改密 |
+| 名册导入污染 | 先解析并做行级校验，任何错误整批不写入；学号唯一索引兜底 |
 | 代码滥用资源 | 超时、输出上限、临时目录、`-I` 隔离；**无容器隔离**，仅限可信内网 |
 | 会话 | HMAC 签名 Cookie（httpOnly, sameSite=lax, 7 天） |
 
@@ -206,6 +236,7 @@ server/runner/run.ts     执行器：进程、超时、输出截断、清理
 | 题库 / 组卷 | 抽出 `questions` 的 `exam_id` 为可空，增加 `bank` 与 `exam_questions` 关联表 |
 | Excel 导出 | 看板已提供 CSV；新增 xlsx 可复用 `/teacher/analytics` 的学生行数据 |
 | 按班发布 | 增加 `exams.class_ids_json` 或 `exam_classes` 关联表，学生列表与发布接口按班过滤 |
+| 学生密码 / SSO | 名册导入时生成初始口令，或接入学校统一身份认证；`users.password_hash` 已预留 |
 | 更多学情维度 | 在 `questions` 上增加知识点 / 能力标签，看板按标签聚合 |
 
 ---

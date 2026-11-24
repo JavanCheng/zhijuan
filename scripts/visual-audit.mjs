@@ -1,4 +1,4 @@
-// 视觉巡检：抓取各页面截图，便于系统性检查间距与排版
+﻿// 视觉巡检：抓取各页面截图，便于系统性检查间距与排版
 // 用法：node scripts/visual-audit.mjs
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -24,10 +24,17 @@ async function session(width = 1440, height = 900) {
   return page;
 }
 
-async function login(page, username) {
-  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[autocomplete="username"]', username);
+async function loginTeacher(page) {
+  await page.goto(`${BASE}/teacher/login`, { waitUntil: 'networkidle' });
+  await page.fill('input[autocomplete="username"]', 'teacher');
   await page.fill('input[type="password"]', '123456');
+  await page.click('button[type="submit"]');
+}
+
+async function loginStudent(page, name, studentNo) {
+  await page.goto(`${BASE}/student/login`, { waitUntil: 'networkidle' });
+  await page.fill('input[placeholder="请输入姓名"]', name);
+  await page.fill('input[placeholder="请输入学号"]', studentNo);
   await page.click('button[type="submit"]');
 }
 
@@ -42,7 +49,7 @@ const teacher = await session();
 await teacher.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
 await shot(teacher, 't01-login');
 
-await login(teacher, 'teacher');
+await loginTeacher(teacher);
 await teacher.waitForURL('**/teacher');
 await teacher.waitForSelector('text=考试管理');
 await shot(teacher, 't02-home', true);
@@ -75,14 +82,14 @@ await shot(teacher, 't07-submission', true);
 
 // 1280 宽度下的教师首页
 const teacherNarrow = await session(1280, 800);
-await login(teacherNarrow, 'teacher');
+await loginTeacher(teacherNarrow);
 await teacherNarrow.waitForURL('**/teacher');
 await teacherNarrow.waitForSelector('text=考试管理');
 await shot(teacherNarrow, 't08-home-1280', true);
 
 // ── 学生端（s02，未提交）──────────────────────────────
 const student = await session();
-await login(student, 's02');
+await loginStudent(student, '王梓萱', '20250302');
 await student.waitForURL('**/student');
 await student.waitForSelector('text=你好');
 await shot(student, 's01-home', true);
@@ -103,7 +110,7 @@ await shot(student, 's08-submit-modal');
 await student.locator('.ant-modal-close').first().click();
 
 const studentNarrow = await session(1280, 800);
-await login(studentNarrow, 's02');
+await loginStudent(studentNarrow, '王梓萱', '20250302');
 await studentNarrow.waitForURL('**/student');
 await studentNarrow.locator('button:has-text("继续作答")').first().click();
 await studentNarrow.waitForSelector('text=第 1 题');
@@ -111,7 +118,7 @@ await shot(studentNarrow, 's09-exam-1280');
 
 // ── 学生成绩（s01）────────────────────────────────────
 const result = await session();
-await login(result, 's01');
+await loginStudent(result, '李子涵', '20250301');
 await result.waitForURL('**/student');
 await result.locator('button:has-text("查看成绩")').first().click();
 await result.waitForSelector('.score-hero');

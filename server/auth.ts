@@ -12,6 +12,7 @@ export interface SessionUser {
   studentNo: string | null;
   classId: number | null;
   className: string | null;
+  isActive: boolean;
 }
 
 let cachedSecret: string | null = null;
@@ -42,12 +43,13 @@ export function currentUser(req: FastifyRequest): SessionUser | null {
     student_no: string | null;
     class_id: number | null;
     class_name: string | null;
+    is_active: number;
   }>(
-    `SELECT u.id, u.username, u.name, u.role, u.student_no, u.class_id, c.name AS class_name
+    `SELECT u.id, u.username, u.name, u.role, u.student_no, u.class_id, u.is_active, c.name AS class_name
      FROM users u LEFT JOIN classes c ON c.id = u.class_id WHERE u.id = ?`,
     id,
   );
-  if (!row) return null;
+  if (!row || !row.is_active) return null;
   return {
     id: row.id,
     username: row.username,
@@ -56,6 +58,7 @@ export function currentUser(req: FastifyRequest): SessionUser | null {
     studentNo: row.student_no,
     classId: row.class_id,
     className: row.class_name,
+    isActive: !!row.is_active,
   };
 }
 

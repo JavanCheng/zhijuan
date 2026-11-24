@@ -14,7 +14,7 @@ function Api($method, $path, $body, $session) {
   return Invoke-RestMethod @params
 }
 
-$login = Invoke-RestMethod -Uri "$base/api/auth/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 'teacher'; password = '123456' }) -SessionVariable tea
+$login = Invoke-RestMethod -Uri "$base/api/auth/teacher/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 'teacher'; password = '123456' }) -SessionVariable tea
 Write-Host "教师登录：$($login.user.name)"
 
 $existing = Api 'Get' '/api/teacher/exams' $null $tea

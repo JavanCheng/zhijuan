@@ -1,23 +1,35 @@
 # 智卷 · 信息科技在线测评系统
 
 一套面向课堂的「教师出卷 → 学生作答 → 自动阅卷 → 教师校准 → 成绩发布」闭环系统。
-教师用 **Word** 出题，系统自动解析题型、答案与代码测试点；客观题秒级判分，代码题在真实运行时里跑测试点；教师端可以逐题校准每一分。
+教师用 **Word** 出题、用 **Excel** 导入班级学生名册；系统自动解析题型、答案与代码测试点，客观题秒级判分，代码题在真实运行时里跑测试点；教师端可以逐题校准每一分。
 
-> 当前版本：v0.2（单机 / 局域网形态，无需数据库服务、无需 Docker、无需外网）
+> 当前版本：v0.3（单机 / 局域网形态，无需数据库服务、无需 Docker、无需外网）
 
-**技术栈**：React 19 + antd v6 + Tailwind CSS v4 + ECharts 6 + Vite ｜ Fastify 5 + TypeScript ｜ SQLite（node:sqlite）｜ 内置 Python 运行时
+**技术栈**：React 19 + antd v6 + Tailwind CSS v4 + ECharts 6 + Vite ｜ Fastify 5 + TypeScript ｜ SQLite（node:sqlite）｜ Excel（xlsx）名册导入 ｜ 内置 Python 运行时
 
 ---
 
 ## 界面预览
 
-**登录**（教师与学生同一入口，登录后自动进入对应工作台）
+**登录入口**（教师 / 学生使用两个独立地址，学生仅支持已录入名册）
 
-![登录页](docs/images/01-login.png)
+![登录入口](docs/images/01-login.png)
+
+**教师登录**
+
+![教师登录](docs/images/10-teacher-login.png)
+
+**学生登录**（姓名 + 学号，未录入学生无法登录）
+
+![学生登录](docs/images/09-student-login.png)
 
 **教师端 · 考试管理**（顶部实时显示代码运行时状态）
 
 ![教师端首页](docs/images/02-teacher-home.png)
+
+**教师端 · 班级管理**（Excel / CSV 导入名册，管理登录权限）
+
+![班级管理](docs/images/08-classes.png)
 
 **教师端 · 学情看板**（按班级 / 学生维度汇总，ECharts 图表汇报）
 
@@ -43,6 +55,8 @@
 
 | 能力 | 说明 |
 | --- | --- |
+| 班级管理 | 新建 / 重命名 / 删除班级；Excel、CSV 或手动添加学生；支持编辑、停用、删除与恢复登录 |
+| 名册导入 | 按「班级 / 姓名 / 学号」导入 `.xlsx`、`.xls`、`.csv`；自动创建班级、按学号更新学生 |
 | 建考试 | 标题、说明、时长（分钟） |
 | Word 导入 | 上传 `.docx`，先解析预览、标出错误与警告，确认后再入库 |
 | 题目管理 | 查看六种题型、修改分值、删除题目、查看答案与测试点 |
@@ -52,12 +66,12 @@
 | 成绩发布 | 发布后学生可见每题得分、参考答案、解析 |
 | 学情看板 | ECharts 图表：成绩分布、班级对比、学生对比、逐题得分率、历次趋势；支持多班级 / 多学生筛选 |
 | 学生画像 | 单名学生历次成绩走势、班级排名、最近一次逐题得分与班级平均对比 |
-| 班级设置 | 在学情看板内新建班级、调整学生所属班级，立即影响统计口径 |
 
 ### 学生端
 
 | 能力 | 说明 |
 | --- | --- |
+| 登录 | 独立 `/student/login`，使用老师录入的姓名 + 学号；未录入或已停用无法登录 |
 | 班级与身份 | 顶部与学生首页展示所属班级、学号；教师端可按班统计 |
 | 考试列表 | 未开始 / 继续作答 / 批改中 / 查看成绩；已出分考试直接显示得分 |
 | 在线作答 | 六种题型、答题卡导航、自动保存草稿、倒计时 |
@@ -101,32 +115,48 @@ pnpm start     # 启动服务，默认 8787 端口
 pnpm dev       # Vite :5173（/api 代理到 :8787）+ tsx watch
 ```
 
+### 登录地址
+
+- 教师：<http://127.0.0.1:8787/teacher/login>
+- 学生：<http://127.0.0.1:8787/student/login>
+- 入口选择页：<http://127.0.0.1:8787/login>
+
 ### 演示账号
 
-| 角色 | 账号 | 密码 | 说明 |
+| 角色 | 登录方式 | 密码 | 说明 |
 | --- | --- | --- | --- |
 | 教师 | `teacher` | `123456` | 张老师 |
-| 学生 | `s01` ~ `s36` | `123456` | 分属高一(1)(2)(3)班，每班 12 人；也可用学号登录（如 `20250301`） |
+| 学生 | 姓名 + 学号 | 无 | 例：`李子涵 / 20250301`、`王梓萱 / 20250302`；仅名册中的学生可登录 |
 
-> 班级按学号顺序分配：`s01`–`s12` 高一(1)班，`s13`–`s24` 高一(2)班，`s25`–`s36` 高一(3)班。可在教师端「学情看板 → 班级设置」中调整。
+> 演示学生按学号顺序分班：`20250301`–`20250312` 高一(1)班，`20250313`–`20250324` 高一(2)班，`20250325`–`20250336` 高一(3)班。可在教师端「班级管理」中查看、导入或调整。
 
 ### 数据存放
 
-所有数据在 `data/app.db`（SQLite 单文件）。删除 `data/` 目录后重启即可恢复初始状态并重新灌入演示账号与班级。
+所有数据在 `data/app.db`（SQLite 单文件）。删除 `data/` 目录后重启即可恢复初始状态并重新灌入演示账号、班级与 36 名学生。
 
 ---
 
 ## 3. 五分钟走完一遍
 
-1. 用 `teacher / 123456` 登录，点 **新建考试**。
+1. 打开 <http://127.0.0.1:8787/teacher/login>，用 `teacher / 123456` 登录，点 **新建考试**。
 2. 进入试卷页，点 **使用示例模板试导入**（等价于上传 `templates/题目模板.docx`）。
 3. 检查解析预览：6 题、100 分、0 错误 → **确认导入**。
 4. 点 **发布考试**。
-5. 退出，用 `s01 / 123456` 登录，进入考试作答（代码题已内置 Python 起始模板）。
+5. 退出，打开 <http://127.0.0.1:8787/student/login>，用 `李子涵 / 20250301` 登录，进入考试作答（代码题已内置 Python 起始模板）。
 6. 提交后等待几秒，自动评分完成。
 7. 回到教师端 **批改与出分**：能看到自动分、代码题每个测试点的通过情况；给简答题打分。
 8. **发布成绩**，学生端即可看到每题得分与解析。
 9. 打开 **学情看板**：选择考试、班级、学生，查看成绩分布、班级对比、学生对比与逐题分析；点击学生「画像」查看个人趋势。
+10. 打开 **班级管理**：可下载 Excel 模板，导入新的班级与学生；只有名册中的学生才能登录。
+
+### 班级管理与学生导入
+
+- 入口：教师端侧边栏「班级管理」。
+- 模板列：**班级 / 姓名 / 学号**；支持 `.xlsx`、`.xls`、`.csv`。
+- 也支持「一个工作表就是一个班级」：表头写姓名、学号，工作表名作为班级名。
+- 学号是学生唯一标识：同一文件内重复会报错并整批不写入；数据库已存在相同学号则更新姓名与班级。
+- 导入后学生立即可用 **姓名 + 学号** 登录；停用学生无法登录，历史成绩仍保留。
+- 新增/编辑学生时可以修改姓名、学号、班级；已有作答记录的学生删除时会自动改为停用。
 
 想直接体验有多班对比数据的看板，可先运行一次演示数据脚本（需要数据库中已有一场含题目的考试，脚本会再创建 3 场历史考试并为 36 名学生生成成绩）：
 
@@ -274,15 +304,17 @@ yby/
 │  ├─ http.ts               # 守卫、考试归属校验、审计
 │  ├─ serialize.ts          # 行 → DTO
 │  ├─ import/docx.ts        # Word 解析（mammoth + 状态机）
+│  ├─ import/students.ts    # Excel / CSV 学生名册解析与模板生成
 │  ├─ runner/run.ts         # Python / Node 执行器
 │  ├─ grading/worker.ts     # 评分队列 worker
-│  └─ routes/               # auth / teacher / analytics / student
+│  └─ routes/               # auth / teacher / classes / analytics / student
 ├─ shared/                  # 前后端共用类型与纯函数判分
 │  ├─ types.ts
 │  └─ grading.ts
 ├─ src/                     # React 前端
 │  ├─ charts/               # ECharts 按需注册与通用图表组件
-│  ├─ pages/teacher/        # 考试列表、试卷、批改、单份批改、学情看板、学生画像
+│  ├─ pages/Login.tsx       # 入口选择 / 教师登录 / 学生登录
+│  ├─ pages/teacher/        # 考试、试卷、批改、学情看板、班级管理、学生画像
 │  ├─ pages/student/        # 考试列表、作答、成绩
 │  ├─ ui.tsx / styles.css   # antd 主题、布局与全局样式
 │  └─ api.ts / auth.tsx / format.ts
@@ -316,11 +348,11 @@ yby/
 | `pnpm demo:data` | 可选：生成 3 场历史考试与 36 名学生成绩，用于体验学情看板 |
 | `pnpm demo:reset` | 强制重建演示数据（会覆盖已有提交，仅用于演示库） |
 | `pnpm smoke` | 接口级端到端冒烟（含错误答卷与看板接口校验，需服务运行中） |
-| `node scripts/ui-check.mjs` | 浏览器级端到端检查（Playwright + 本机 Edge；建议在空库运行，输出截图到 `shots/`） |
-| `node scripts/analytics-check.mjs` | 学情看板 + 响应式视觉巡检（输出截图到 `audit/`，建议先运行 `pnpm demo:data`） |
+| `node scripts/ui-check.mjs` | 浏览器级端到端检查（Playwright + 本机 Edge；需空库并先运行 `demo-setup.ps1`，输出截图到 `shots/`） |
+| `node scripts/analytics-check.mjs` | 登录/看板/班级管理 + 响应式视觉巡检（输出截图到 `audit/`，建议先运行 `pnpm demo:data`） |
 | `pwsh scripts/demo-setup.ps1` | 空库时生成一场示例考试 |
 
-多层自检覆盖不同风险：`pnpm typecheck` 管类型；`pnpm import:test` 管 Word 解析；`pnpm smoke` 管接口、判分链路与看板接口；`node scripts/ui-check.mjs` 用真实浏览器跑完「发布 → 作答 → 自动评分 → 人工改分 → 发布成绩」并截图；`node scripts/analytics-check.mjs` 管看板图表、筛选、学生画像与移动端布局。
+多层自检覆盖不同风险：`pnpm typecheck` 管类型；`pnpm import:test` 管 Word 解析；`pnpm smoke` 管接口、判分链路与看板接口；`node scripts/ui-check.mjs` 用真实浏览器跑完「发布 → 作答 → 自动评分 → 人工改分 → 发布成绩」并截图；`node scripts/analytics-check.mjs` 管双登录入口、班级管理、看板图表、筛选、学生画像与移动端布局。
 
 环境变量：
 
@@ -337,7 +369,8 @@ yby/
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/auth/login` | 登录（账号或学号 + 密码） |
+| POST | `/api/auth/teacher/login` | 教师登录（账号 + 密码） |
+| POST | `/api/auth/student/login` | 学生登录（姓名 + 学号，仅已录入且启用） |
 | POST | `/api/auth/logout` | 退出 |
 | GET | `/api/auth/me` | 当前用户 |
 | GET | `/api/auth/runtime` | 代码运行时状态（教师） |
@@ -354,16 +387,23 @@ yby/
 | GET | `/api/teacher/submissions/:id` | 单份答卷（含自动评分证据） |
 | PATCH | `/api/teacher/answers/:id` | 人工改分 |
 | POST | `/api/teacher/exams/:id/confirm-auto` | 一键确认自动分 |
+| GET | `/api/teacher/classes/overview` | 班级与学生名册概览 |
+| POST | `/api/teacher/classes` | 新建班级 |
+| PATCH/DELETE | `/api/teacher/classes/:id` | 重命名 / 删除空班级 |
+| POST | `/api/teacher/students` | 手动添加学生 |
+| PATCH/DELETE | `/api/teacher/students/:id` | 编辑 / 停用或删除学生 |
+| GET | `/api/teacher/students/template.xlsx` | 下载学生名册 Excel 模板 |
+| POST | `/api/teacher/students/import` | 导入 `.xlsx/.xls/.csv` 名册（multipart） |
 | GET | `/api/teacher/analytics/meta` | 看板筛选项：考试、班级、学生 |
 | GET | `/api/teacher/analytics` | 学情看板数据（`examId`、`classIds`、`studentIds`） |
 | GET | `/api/teacher/students/:id/profile` | 学生画像（历次成绩、班级排名、逐题对比） |
-| POST | `/api/teacher/classes` | 新建班级 |
-| PATCH | `/api/teacher/students/:id` | 调整学生所属班级 |
 | GET | `/api/student/exams` | 学生考试列表 |
 | GET | `/api/student/exams/:id` | 取卷（首次自动创建作答记录） |
 | PUT | `/api/student/submissions/:id/draft` | 保存草稿 |
 | POST | `/api/student/submissions/:id/submit` | 提交并触发评分 |
 | GET | `/api/student/submissions/:id` | 成绩 / 批改进度 |
+
+> `/api/auth/login` 保留为教师登录兼容别名，学生请使用 `/api/auth/student/login`。
 
 ---
 
@@ -374,9 +414,11 @@ yby/
 - 题目内容目前只能通过重新导入修改（会覆盖整卷）；已有人提交时禁止重新导入/删题。
 - 多选题暂不支持「漏选得半分」配置。
 - 简答题没有自动评分（预留了 AI 辅助的接入点）。
+- 学生登录采用「姓名 + 学号」课堂信任模式，未设置独立密码；公网部署前应增加密码、验证码或统一身份认证。
+- 名册导入支持 `.xlsx / .xls / .csv`，暂不包含照片、家长联系方式等字段；单次最多 5000 人。
+- 已有作答记录的学生无法直接物理删除，会转为停用并保留历史成绩；可在名册中恢复。
 - 学情看板只统计已完成自动评分的答卷；评分进行中的答卷不会出现在统计里。
-- 班级目前是统计维度，考试仍面向全体学生发布，尚未做「按班发布 / 按班限权」。
-- 班级调整在「学情看板 → 班级设置」中逐个学生切换，暂不支持批量导入名单。
+- 班级目前是统计与登录名册维度，考试仍面向全体学生发布，尚未做「按班发布 / 按班限权」。
 - 成绩暂无 Excel 导出（看板提供 CSV 导出）、无题库沉淀与组卷。
 - 倒计时到点自动提交依赖学生页面仍打开；服务端以提交时间为准做兜底校验。
 - 未启用 HTTPS；局域网内认证 Cookie 明文传输（内网场景可接受，公网需加 TLS）。
@@ -386,6 +428,7 @@ yby/
 1. 代码沙箱升级为 Docker（`--network none`、只读根、内存/CPU/PID 限制）。
 2. 支持 C++/Java（镜像与编译链路）。
 3. 题库与组卷、Excel 成绩导出、按班发布考试。
-4. 简答题 AI 辅助评分（建议分 + 教师确认，仍以人工为准）。
-5. 题目在线编辑（不依赖 Word）与图片粘贴上传。
-6. 学情看板增加知识点 / 能力维度标签与跨考试班级追踪。
+4. 学生登录增加密码 / 验证码 / 统一身份认证，并支持二维码或名单链接登录。
+5. 简答题 AI 辅助评分（建议分 + 教师确认，仍以人工为准）。
+6. 题目在线编辑（不依赖 Word）与图片粘贴上传。
+7. 学情看板增加知识点 / 能力维度标签与跨考试班级追踪。

@@ -22,10 +22,17 @@ async function session(width = 1440, height = 900) {
   return page;
 }
 
-async function login(page, username) {
-  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[autocomplete="username"]', username);
+async function loginTeacher(page) {
+  await page.goto(`${BASE}/teacher/login`, { waitUntil: 'networkidle' });
+  await page.fill('input[autocomplete="username"]', 'teacher');
   await page.fill('input[type="password"]', '123456');
+  await page.click('button[type="submit"]');
+}
+
+async function loginStudent(page, name, studentNo) {
+  await page.goto(`${BASE}/student/login`, { waitUntil: 'networkidle' });
+  await page.fill('input[placeholder="请输入姓名"]', name);
+  await page.fill('input[placeholder="请输入学号"]', studentNo);
   await page.click('button[type="submit"]');
 }
 
@@ -54,10 +61,25 @@ async function checkOverflow(page, label) {
 }
 
 const teacher = await session();
-await login(teacher, 'teacher');
+await teacher.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+await shot(teacher, 'w00-login-chooser');
+await teacher.goto(`${BASE}/teacher/login`, { waitUntil: 'networkidle' });
+await shot(teacher, 'w17-teacher-login', false);
+await loginTeacher(teacher);
 await teacher.waitForURL('**/teacher');
 await teacher.waitForSelector('text=考试管理');
 await shot(teacher, 'w01-teacher-home');
+
+await teacher.goto(`${BASE}/teacher/classes`, { waitUntil: 'networkidle' });
+await teacher.waitForSelector('text=班级管理');
+await teacher.waitForSelector('text=学生名册');
+await shot(teacher, 'w08-classes');
+await teacher.locator('button:has-text("导入名单")').first().click();
+await teacher.waitForSelector('.ant-modal', { timeout: 15000 });
+await teacher.waitForTimeout(500);
+await shot(teacher, 'w08b-import-modal', false);
+await teacher.locator('.ant-modal-close').first().click();
+console.log('  班级管理 OK');
 
 await teacher.goto(`${BASE}/teacher/analytics`, { waitUntil: 'networkidle' });
 await teacher.waitForSelector('text=参评人数', { timeout: 20000 });
@@ -99,13 +121,6 @@ await waitCharts(teacher, 2);
 await shot(teacher, 'w07-analytics-student-compare');
 console.log('  多学生对比 OK');
 
-await teacher.locator('button:has-text("班级设置")').first().click();
-await teacher.waitForSelector('.ant-drawer', { timeout: 15000 });
-await teacher.waitForTimeout(600);
-await shot(teacher, 'w08-class-settings', false);
-await teacher.locator('.ant-drawer-close').first().click();
-console.log('  班级设置 OK');
-
 await teacher.goto(`${BASE}/teacher/exam/1/grading`, { waitUntil: 'networkidle' });
 await teacher.waitForSelector('text=已提交');
 await shot(teacher, 'w09-grading');
@@ -116,7 +131,9 @@ console.log('  批改台与单份批改 OK');
 
 // 学生端
 const student = await session();
-await login(student, 's01');
+await student.goto(`${BASE}/student/login`, { waitUntil: 'networkidle' });
+await shot(student, 'w18-student-login', false);
+await loginStudent(student, '李子涵', '20250301');
 await student.waitForURL('**/student');
 await student.waitForSelector('text=你好');
 await shot(student, 'w11-student-home');
@@ -125,9 +142,19 @@ await student.waitForSelector('.score-hero', { timeout: 15000 });
 await shot(student, 'w12-student-result');
 console.log('  学生端 OK');
 
+// 未录入学生必须被拒绝
+const denied = await session();
+await denied.goto(`${BASE}/student/login`, { waitUntil: 'networkidle' });
+await denied.fill('input[placeholder="请输入姓名"]', '未录入学生');
+await denied.fill('input[placeholder="请输入学号"]', 'NO-SUCH-NO');
+await denied.click('button[type="submit"]');
+await denied.waitForSelector('text=姓名或学号不正确', { timeout: 10000 });
+console.log('  未录入学生拒绝登录 OK');
+await denied.context().close();
+
 // 移动端
 const mobile = await session(390, 844);
-await login(mobile, 'teacher');
+await loginTeacher(mobile);
 await mobile.waitForURL('**/teacher');
 await mobile.waitForSelector('text=考试管理');
 await shot(mobile, 'w13-mobile-home', false);
@@ -135,21 +162,18 @@ await checkOverflow(mobile, '移动端教师首页');
 await mobile.locator('button[aria-label="打开导航"]').click();
 await mobile.waitForTimeout(500);
 await shot(mobile, 'w14-mobile-nav', false);
+await mobile.locator('.sider-nav-item:has-text("班级管理")').click();
+await mobile.waitForSelector('text=学生名册', { timeout: 20000 });
+await mobile.waitForTimeout(800);
+await shot(mobile, 'w15-mobile-classes', false);
+await checkOverflow(mobile, '移动端班级管理');
+await mobile.locator('button[aria-label="打开导航"]').click();
+await mobile.waitForTimeout(500);
 await mobile.locator('.sider-nav-item:has-text("学情看板")').click();
 await mobile.waitForSelector('text=参评人数', { timeout: 20000 });
 await mobile.waitForTimeout(1200);
-await shot(mobile, 'w15-mobile-analytics', false);
+await shot(mobile, 'w16-mobile-analytics', false);
 await checkOverflow(mobile, '移动端学情看板');
-await mobile.locator('button:has-text("班级设置")').first().click();
-await mobile.waitForSelector('.ant-drawer', { timeout: 15000 });
-await mobile.waitForTimeout(500);
-const drawerWidth = await mobile
-  .locator('.ant-drawer-content-wrapper')
-  .first()
-  .evaluate((element) => element.getBoundingClientRect().width);
-if (drawerWidth > 392) issues.push(`移动端班级设置抽屉超出屏幕：${drawerWidth}px`);
-await shot(mobile, 'w16-mobile-class-settings', false);
-await mobile.locator('.ant-drawer-close').first().click();
 console.log('  移动端 OK');
 
 await browser.close();

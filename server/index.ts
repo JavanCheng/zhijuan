@@ -12,6 +12,7 @@ import { authRoutes } from './routes/auth.ts';
 import { teacherRoutes } from './routes/teacher.ts';
 import { studentRoutes } from './routes/student.ts';
 import { analyticsRoutes } from './routes/analytics.ts';
+import { classRoutes } from './routes/classes.ts';
 import { startGradingWorker } from './grading/worker.ts';
 import { runtimeStatus } from './runner/run.ts';
 
@@ -29,17 +30,6 @@ const app = Fastify({
 await app.register(cookie, { secret: cookieSecret() });
 await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 
-await app.register(authRoutes, { prefix: '/api' });
-await app.register(teacherRoutes, { prefix: '/api' });
-await app.register(analyticsRoutes, { prefix: '/api' });
-await app.register(studentRoutes, { prefix: '/api' });
-
-app.get('/api/health', async () => ({
-  ok: true,
-  time: new Date().toISOString(),
-  runtime: runtimeStatus(),
-}));
-
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof HttpError) {
     return reply.code(error.status).send({ error: error.message });
@@ -53,6 +43,18 @@ app.setErrorHandler((error, _req, reply) => {
   console.error('[server] unhandled error:', err);
   return reply.code(500).send({ error: '服务器内部错误' });
 });
+
+await app.register(authRoutes, { prefix: '/api' });
+await app.register(teacherRoutes, { prefix: '/api' });
+await app.register(analyticsRoutes, { prefix: '/api' });
+await app.register(classRoutes, { prefix: '/api' });
+await app.register(studentRoutes, { prefix: '/api' });
+
+app.get('/api/health', async () => ({
+  ok: true,
+  time: new Date().toISOString(),
+  runtime: runtimeStatus(),
+}));
 
 if (fs.existsSync(path.join(DIST, 'index.html'))) {
   await app.register(fastifyStatic, { root: DIST, prefix: '/' });

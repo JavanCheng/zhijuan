@@ -29,8 +29,9 @@ export async function api<T>(path: string, init: { method?: string; body?: Body 
   if (!res.ok) {
     let message = `请求失败（${res.status}）`;
     try {
-      const data = (await res.json()) as { error?: string };
-      if (data?.error) message = data.error;
+      const data = (await res.json()) as { error?: string; message?: string };
+      if (data?.error && data.error !== 'Unauthorized') message = data.error;
+      else if (data?.message) message = data.message;
     } catch {
       /* ignore */
     }

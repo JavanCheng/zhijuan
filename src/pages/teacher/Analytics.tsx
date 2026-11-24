@@ -19,7 +19,6 @@ import {
   FallOutlined,
   ReloadOutlined,
   RiseOutlined,
-  SettingOutlined,
   StarOutlined,
   TeamOutlined,
   TrophyOutlined,
@@ -46,7 +45,6 @@ import {
 import { scoreText } from '../../format';
 import { CHART_COLORS, Chart, axisLabel, chartTooltip, splitLine } from '../../charts/Chart';
 import { StudentProfileDrawer } from './StudentProfileDrawer';
-import { ClassSettingsDrawer } from './ClassSettingsDrawer';
 
 const { Text } = Typography;
 
@@ -148,7 +146,6 @@ export function TeacherAnalytics() {
   const [tab, setTab] = useState('overview');
   const [refreshKey, setRefreshKey] = useState(0);
   const [profileId, setProfileId] = useState<number | null>(null);
-  const [classOpen, setClassOpen] = useState(false);
 
   const classIds = useMemo(() => parseIds(searchParams.get('classIds')), [searchParams]);
   const studentIds = useMemo(() => parseIds(searchParams.get('studentIds')), [searchParams]);
@@ -926,8 +923,8 @@ export function TeacherAnalytics() {
         subtitle="按考试、班级与学生维度汇总成绩；图表会随筛选实时变化，可直接用于教研汇报。"
         extra={
           <>
-            <Button icon={<SettingOutlined />} onClick={() => setClassOpen(true)}>
-              班级设置
+            <Button icon={<TeamOutlined />} onClick={() => navigate('/teacher/classes')}>
+              班级管理
             </Button>
             <Button icon={<DownloadOutlined />} disabled={!data} onClick={exportCsv}>
               导出成绩
@@ -1236,12 +1233,6 @@ export function TeacherAnalytics() {
       )}
 
       <StudentProfileDrawer studentId={profileId} open={profileId != null} onClose={() => setProfileId(null)} />
-      <ClassSettingsDrawer
-        open={classOpen}
-        meta={meta}
-        onClose={() => setClassOpen(false)}
-        onChanged={() => setRefreshKey((value) => value + 1)}
-      />
     </Page>
   );
 }

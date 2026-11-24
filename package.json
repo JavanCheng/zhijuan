@@ -1,6 +1,6 @@
 {
   "name": "zhijuan",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "智卷 · 信息科技在线测评系统（教师端 + 学生端）",
@@ -33,6 +33,7 @@
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.6",
     "sanitize-html": "^2.18.2",
+    "xlsx": "^0.18.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {

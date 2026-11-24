@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL,
   student_no TEXT,
   class_id INTEGER REFERENCES classes(id),
+  is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
 
@@ -174,7 +175,21 @@ function ensureColumn(table: string, column: string, definition: string): void {
 
 function ensureClasses(): { id: number; name: string }[] {
   ensureColumn('users', 'class_id', 'class_id INTEGER REFERENCES classes(id)');
+  ensureColumn('users', 'is_active', 'is_active INTEGER NOT NULL DEFAULT 1');
   db.exec('CREATE INDEX IF NOT EXISTS idx_users_class ON users(class_id)');
+
+  const duplicate = get<{ student_no: string }>(
+    `SELECT student_no FROM users
+     WHERE role = 'student' AND student_no IS NOT NULL AND student_no <> ''
+     GROUP BY student_no HAVING COUNT(*) > 1 LIMIT 1`,
+  );
+  if (!duplicate) {
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_no ON users(student_no) WHERE role = 'student' AND student_no IS NOT NULL AND student_no <> ''",
+    );
+  } else {
+    console.warn(`[db] 学号重复，暂未创建唯一索引：${duplicate.student_no}`);
+  }
 
   const ts = nowIso();
   const existing = get<{ c: number }>('SELECT COUNT(*) AS c FROM classes')?.c ?? 0;

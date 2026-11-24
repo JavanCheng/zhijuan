@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import { all, get, nowIso, run } from '../db.ts';
-import { audit, HttpError, loadOwnedExam, requireTeacher, type ExamRow } from '../http.ts';
+import { all, get, nowIso } from '../db.ts';
+import { HttpError, loadOwnedExam, requireTeacher, type ExamRow } from '../http.ts';
 import { loadQuestions } from '../serialize.ts';
 import {
   QUESTION_TYPE_LABEL,
@@ -602,59 +601,8 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
     return analyticsPayload(user.id, exam, meta, classIds, studentIds);
   });
 
-  app.post('/teacher/classes', async (req) => {
-    const user = requireTeacher(req);
-    const body = z
-      .object({
-        name: z.string().trim().min(1).max(40),
-        grade: z.string().trim().max(20).optional(),
-      })
-      .safeParse(req.body);
-    if (!body.success) throw new HttpError(400, '班级名称不能为空（1-40 字）');
-    if (get('SELECT id FROM classes WHERE name = ?', body.data.name)) {
-      throw new HttpError(409, '同名班级已存在');
-    }
-    const maxSort = get<{ value: number | null }>('SELECT MAX(sort_order) AS value FROM classes')?.value ?? 0;
-    const res = run(
-      'INSERT INTO classes (name, grade, sort_order, created_at) VALUES (?, ?, ?, ?)',
-      body.data.name,
-      body.data.grade ?? null,
-      maxSort + 1,
-      nowIso(),
-    );
-    audit(user.id, 'class', res.lastInsertRowid, 'create', null, { name: body.data.name, grade: body.data.grade ?? null });
-    return { id: res.lastInsertRowid, name: body.data.name, grade: body.data.grade ?? null };
-  });
-
   app.get('/teacher/students/:id/profile', async (req) => {
     const user = requireTeacher(req);
     return studentProfile(user.id, Number((req.params as { id: string }).id));
-  });
-
-  app.patch('/teacher/students/:id', async (req) => {
-    const user = requireTeacher(req);
-    const studentId = Number((req.params as { id: string }).id);
-    const body = z.object({ classId: z.number().int().positive().nullable() }).safeParse(req.body);
-    if (!body.success) throw new HttpError(400, '班级参数不合法');
-
-    const student = get<{ id: number; class_id: number | null }>(
-      "SELECT id, class_id FROM users WHERE id = ? AND role = 'student'",
-      studentId,
-    );
-    if (!student) throw new HttpError(404, '学生不存在');
-    if (body.data.classId != null && !get('SELECT id FROM classes WHERE id = ?', body.data.classId)) {
-      throw new HttpError(400, '班级不存在');
-    }
-
-    run('UPDATE users SET class_id = ? WHERE id = ?', body.data.classId, studentId);
-    audit(
-      user.id,
-      'user',
-      studentId,
-      'update_class',
-      { classId: student.class_id },
-      { classId: body.data.classId },
-    );
-    return { ok: true };
   });
 }

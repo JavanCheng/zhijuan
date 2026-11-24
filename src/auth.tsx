@@ -11,12 +11,14 @@ export interface User {
   studentNo?: string | null;
   classId?: number | null;
   className?: string | null;
+  isActive?: boolean;
 }
 
 interface AuthState {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<User>;
+  loginTeacher: (username: string, password: string) => Promise<User>;
+  loginStudent: (name: string, studentNo: string) => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -33,8 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const data = await post<{ user: User }>('/api/auth/login', { username, password });
+  const loginTeacher = useCallback(async (username: string, password: string) => {
+    const data = await post<{ user: User }>('/api/auth/teacher/login', { username, password });
+    setUser(data.user);
+    return data.user;
+  }, []);
+
+  const loginStudent = useCallback(async (name: string, studentNo: string) => {
+    const data = await post<{ user: User }>('/api/auth/student/login', { name, studentNo });
     setUser(data.user);
     return data.user;
   }, []);
@@ -44,7 +52,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, loading, loginTeacher, loginStudent, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthState {
@@ -55,6 +67,10 @@ export function useAuth(): AuthState {
 
 export function homeOf(role: 'teacher' | 'student'): string {
   return role === 'teacher' ? '/teacher' : '/student';
+}
+
+export function loginPathOf(role: 'teacher' | 'student'): string {
+  return role === 'teacher' ? '/teacher/login' : '/student/login';
 }
 
 function LoadingScreen() {
@@ -68,7 +84,7 @@ function LoadingScreen() {
 export function RequireRole({ role, children }: { role: 'teacher' | 'student'; children: ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to={loginPathOf(role)} replace />;
   if (user.role !== role) return <Navigate to={homeOf(user.role)} replace />;
   return <>{children}</>;
 }

@@ -22,10 +22,17 @@ async function newSession() {
   return page;
 }
 
-async function login(page, username) {
-  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[autocomplete="username"]', username);
+async function loginTeacher(page) {
+  await page.goto(`${BASE}/teacher/login`, { waitUntil: 'networkidle' });
+  await page.fill('input[autocomplete="username"]', 'teacher');
   await page.fill('input[type="password"]', '123456');
+  await page.click('button[type="submit"]');
+}
+
+async function loginStudent(page, name, studentNo) {
+  await page.goto(`${BASE}/student/login`, { waitUntil: 'networkidle' });
+  await page.fill('input[placeholder="请输入姓名"]', name);
+  await page.fill('input[placeholder="请输入学号"]', studentNo);
   await page.click('button[type="submit"]');
 }
 
@@ -40,7 +47,7 @@ await teacher.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
 await shot(teacher, '01-login');
 
 // ── 教师端 ──────────────────────────────────────────────
-await login(teacher, 'teacher');
+await loginTeacher(teacher);
 await teacher.waitForURL('**/teacher');
 await teacher.waitForSelector('text=考试管理');
 await shot(teacher, '02-teacher-home', true);
@@ -59,7 +66,7 @@ console.log('  批改台 OK');
 
 // ── 学生作答 ────────────────────────────────────────────
 const student = await newSession();
-await login(student, 's01');
+await loginStudent(student, '李子涵', '20250301');
 await student.waitForURL('**/student');
 await student.waitForSelector('text=你好');
 await shot(student, '05-student-home', true);
