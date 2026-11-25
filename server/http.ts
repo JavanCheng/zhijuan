@@ -16,6 +16,12 @@ export function requireUser(req: FastifyRequest): SessionUser {
   return user;
 }
 
+export function requireAdmin(req: FastifyRequest): SessionUser {
+  const user = requireUser(req);
+  if (user.role !== 'admin') throw new HttpError(403, '该操作仅管理员可用');
+  return user;
+}
+
 export function requireTeacher(req: FastifyRequest): SessionUser {
   const user = requireUser(req);
   if (user.role !== 'teacher') throw new HttpError(403, '该操作仅教师可用');
@@ -38,6 +44,7 @@ export interface ExamRow {
   start_at: string | null;
   end_at: string | null;
   results_published: number;
+  sections_json: string;
   created_at: string;
 }
 

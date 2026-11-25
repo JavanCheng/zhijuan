@@ -1,6 +1,8 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import { Typography } from 'antd';
-import type { ExamStatus, QuestionType, SubmissionStatus } from '../shared/types';
+import type { ExamStatus, QuestionSection, QuestionType, SubmissionStatus } from '../shared/types';
+import { stripHtml, scoreText } from './format';
+import { BRAND } from './brand';
 
 const { Title } = Typography;
 
@@ -204,10 +206,97 @@ export function EmptyState({
   );
 }
 
-export function BrandMark({ size = 38 }: { size?: number }) {
+/** 三套品牌色：教师端蓝、学生端绿、管理员端紫 */
+const BRAND_TONE = {
+  blue: { from: '#7d99ff', mid: '#3f63f3', to: '#1c34b4', check: '#2a49dd' },
+  green: { from: '#7ef0c8', mid: '#23c79d', to: '#0a7259', check: '#0a7a5c' },
+  purple: { from: '#c4b5fd', mid: '#7c5ce6', to: '#4c2fa8', check: '#5b3bc0' },
+} as const;
+
+export type BrandTone = keyof typeof BRAND_TONE;
+
+/**
+ * 品牌标记：渐变圆角方块 + 白色折角卷面（右下角留白）+ 内嵌判分勾。
+ * 主体是一块实心白形，缩到 16px 仍可辨认，因此同一形状也用作浏览器 favicon（public/favicon.svg）。
+ */
+export function BrandMark({ size = 38, tone = 'blue' }: { size?: number; tone?: BrandTone }) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const gid = `bm${uid}`;
+  const c = BRAND_TONE[tone];
   return (
-    <div className="brand-mark" style={{ width: size, height: size, fontSize: Math.round(size * 0.45) }}>
-      智
+    <svg className="brand-mark" width={size} height={size} viewBox="0 0 40 40" role="img" aria-label={BRAND.name}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={c.from} />
+          <stop offset="52%" stopColor={c.mid} />
+          <stop offset="100%" stopColor={c.to} />
+        </linearGradient>
+      </defs>
+      <rect width="40" height="40" rx="11.5" fill={`url(#${gid})`} />
+      <rect
+        x="0.9"
+        y="0.9"
+        width="38.2"
+        height="38.2"
+        rx="10.8"
+        fill="none"
+        stroke="rgba(255,255,255,0.22)"
+        strokeWidth="1.1"
+      />
+      {/* 卷面（折角） */}
+      <path d="M10.5 10.5 H22.8 L29.5 17.2 V29.5 H10.5 Z" fill="#fff" />
+      <path d="M22.8 10.5 L29.5 17.2 H22.8 Z" fill={c.to} fillOpacity="0.3" />
+      {/* 判分勾 */}
+      <path
+        d="M14.5 21 L18 24.5 L22.6 18.4"
+        fill="none"
+        stroke={c.check}
+        strokeWidth="2.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * 大题材料卡：综合题一~四的材料（背景、表格、图片）只展示一次，
+ * 组内小题共用，不重复写进每题题干。
+ */
+export function SectionMaterial({
+  section,
+  defaultOpen = true,
+  className = '',
+}: {
+  section: QuestionSection;
+  defaultOpen?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const hasBody = stripHtml(section.html).length > 0;
+  return (
+    <div className={`mb-4 rounded-xl border border-[#e4e8f2] bg-[#fbfcff] p-4 ${className}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-lg bg-[var(--brand-strong)] px-2.5 py-1 text-[12.5px] font-semibold text-white">{section.title}</span>
+        {section.score != null ? (
+          <span className="text-[12px] text-[#7b86a0]">本大题 {scoreText(section.score)} 分</span>
+        ) : null}
+        {hasBody ? (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="ml-auto rounded-lg border border-[#e4e8f2] bg-white px-2 py-1 text-[11.5px] text-[#5b6479] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+          >
+            {open ? '收起材料' : '展开材料'}
+          </button>
+        ) : null}
+      </div>
+      {hasBody && open ? <div className="stem section-stem" dangerouslySetInnerHTML={{ __html: section.html }} /> : null}
     </div>
   );
+}
+
+/** 题目所属大题的小标签（列表/预览里用） */
+export function SectionTag({ section }: { section: QuestionSection }) {
+  return <Pill tone="blue">{section.title}</Pill>;
 }

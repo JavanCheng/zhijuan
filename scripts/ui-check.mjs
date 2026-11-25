@@ -2,8 +2,10 @@
 // 用法：node scripts/ui-check.mjs   （需先 pnpm build && pnpm start）
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
+import { ensureDemoTeacher } from './lib/teacher-session.mjs';
 
 const BASE = 'http://127.0.0.1:8787';
+const demoTeacher = await ensureDemoTeacher(BASE);
 const SHOTS = 'shots';
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -24,8 +26,8 @@ async function newSession() {
 
 async function loginTeacher(page) {
   await page.goto(`${BASE}/teacher/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[autocomplete="username"]', 'teacher');
-  await page.fill('input[type="password"]', '123456');
+  await page.fill('input[autocomplete="username"]', demoTeacher.phone);
+  await page.fill('input[type="password"]', demoTeacher.password);
   await page.click('button[type="submit"]');
 }
 

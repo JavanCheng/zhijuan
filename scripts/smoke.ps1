@@ -1,7 +1,7 @@
 # 端到端冒烟测试：教师建卷 → 导入示例 Word → 发布 → 学生作答 → 自动评分 → 教师校准 → 发布成绩
 # 用法：powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1
 $ErrorActionPreference = 'Stop'
-$base = 'http://127.0.0.1:8787'
+$base = if ($env:ZHIJUAN_BASE) { $env:ZHIJUAN_BASE.TrimEnd('/') } else { 'http://127.0.0.1:8787' }
 $jsonType = 'application/json; charset=utf-8'
 
 function Step($msg) { Write-Host "`n== $msg" -ForegroundColor Cyan }
@@ -28,9 +28,22 @@ $health = Invoke-RestMethod -Uri "$base/api/health" -Method Get
 Write-Host "   服务正常；Python 运行时：$($health.runtime.python)"
 if (-not $health.runtime.python) { throw '代码运行时未就绪' }
 
-Step '1. 教师登录'
-$login = Invoke-RestMethod -Uri "$base/api/auth/teacher/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 'teacher'; password = '123456' }) -SessionVariable tea
-Write-Host "   登录成功：$($login.user.name)"
+Step '1. 管理员准备教师账号 → 教师登录'
+$adminLogin = Invoke-RestMethod -Uri "$base/api/auth/admin/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 'admin'; password = 'yby19980523' }) -SessionVariable adminS
+Write-Host "   管理员登录成功：$($adminLogin.user.name) / $($adminLogin.user.role)"
+$overview = Api 'Get' '/api/admin/overview' $null $adminS
+$demoPhone = '13800000000'
+$demo = @($overview.teachers | Where-Object { $_.phone -eq $demoPhone }) | Select-Object -First 1
+if (-not $demo) {
+  $demo = Api 'Post' '/api/admin/teachers' @{ name = '演示教师'; phone = $demoPhone } $adminS
+  Write-Host "   已创建演示教师：$demoPhone / $demoPhone"
+} else {
+  if (-not $demo.isActive) { Api 'Patch' "/api/admin/teachers/$($demo.id)" @{ isActive = $true } $adminS | Out-Null }
+  Api 'Post' "/api/admin/teachers/$($demo.id)/reset-password" @{} $adminS | Out-Null
+  Write-Host "   复用演示教师：$demoPhone / $demoPhone"
+}
+$login = Invoke-RestMethod -Uri "$base/api/auth/teacher/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = $demoPhone; password = $demoPhone }) -SessionVariable tea
+Write-Host "   教师登录成功：$($login.user.name) / $($login.user.role)"
 
 Step '2. 新建考试'
 $exam = Api 'Post' '/api/teacher/exams' @{ title = '高一信息科技 · 单元测试（自动生成）'; description = '冒烟测试用卷'; durationMin = 45 } $tea

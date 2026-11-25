@@ -1,9 +1,9 @@
 {
   "name": "zhijuan",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "智卷 · 信息科技在线测评系统（教师端 + 学生端）",
+  "description": "智卷 · 在线测评系统（管理员端 + 教师端 + 学生端）",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,magenta \"tsx watch server/index.ts\" \"vite\"",
     "build": "vite build",
@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "template": "python scripts/make_template.py",
     "import:test": "tsx scripts/test-import.ts",
+    "e2e:paper": "node scripts/e2e-real-paper.mjs",
+    "visual:paper": "node scripts/visual-check-real-paper.mjs",
     "demo:data": "node scripts/seed-demo.mjs",
     "demo:reset": "node scripts/seed-demo.mjs --force",
     "smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1"

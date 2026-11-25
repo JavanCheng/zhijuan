@@ -11,6 +11,19 @@ export function normalizeText(input: string): string {
     .toLowerCase();
 }
 
+/** 更宽松的归一化：再去掉所有空白，容忍 `event = "x"` 与 `event="x"` 这类写法差异 */
+export function normalizeLoose(input: string): string {
+  return normalizeText(input).replace(/\s+/g, '');
+}
+
+/** 填空比对：先严格比，再忽略空白比一次 */
+function fillMatches(accepted: string[], got: string): boolean {
+  if (!got) return false;
+  const strict = normalizeText(got);
+  const loose = normalizeLoose(got);
+  return accepted.some((a) => normalizeText(a) === strict || normalizeLoose(a) === loose);
+}
+
 /** 代码输出比对：行尾空白忽略、末尾空行忽略、换行统一 */
 export function normalizeOutput(input: string): string {
   return String(input ?? '')
@@ -57,16 +70,48 @@ export function gradeObjective(q: GradableQuestion, raw: StudentAnswer | null): 
       const expectedSet = new Set(expected.map((k) => k.toUpperCase()));
       const gotSet = new Set(got);
       const exact = expectedSet.size === gotSet.size && [...expectedSet].every((k) => gotSet.has(k));
+      if (exact) {
+        return {
+          score: max,
+          detail: {
+            items: [item('答案比对', true, max, max, { expected: expected.join(''), got: got.join('') })],
+            note: '答案正确',
+          },
+        };
+      }
+
+      // 多选漏选扣分：只选对了一部分（没有选错）时，按漏选个数扣分
+      const deduct = spec?.missedDeduct;
+      const allPicked = [...gotSet].every((k) => expectedSet.has(k));
+      if (q.type === 'multiple' && deduct != null && deduct >= 0 && gotSet.size > 0 && allPicked && gotSet.size < expectedSet.size) {
+        const missed = expectedSet.size - gotSet.size;
+        const score = Math.max(0, round2(max - missed * deduct));
+        const note = `漏选 ${missed} 个，每个扣 ${deduct} 分`;
+        return {
+          score,
+          detail: {
+            items: [
+              item('答案比对', score >= max, score, max, {
+                expected: expected.join(''),
+                got: got.join(''),
+                note,
+              }),
+            ],
+            note,
+          },
+        };
+      }
+
       return {
-        score: exact ? max : 0,
+        score: 0,
         detail: {
           items: [
-            item('答案比对', exact, exact ? max : 0, max, {
+            item('答案比对', false, 0, max, {
               expected: expected.join(''),
               got: got.join('') || '（空）',
             }),
           ],
-          note: exact ? '答案正确' : '答案错误',
+          note: '答案错误',
         },
       };
     }
@@ -89,19 +134,34 @@ export function gradeObjective(q: GradableQuestion, raw: StudentAnswer | null): 
       const blanks = spec?.blanks ?? [];
       const got = raw.blanks ?? [];
       const n = Math.max(blanks.length, 1);
-      const per = max / n;
+      const explicit = spec?.blankScores;
+      const manual = spec?.manualBlanks;
       const items: GradeItem[] = blanks.map((accepted, i) => {
-        const value = normalizeText(got[i] ?? '');
-        const ok = value.length > 0 && accepted.some((a) => normalizeText(a) === value);
+        const per = explicit?.[i] ?? max / n;
+        if (manual?.[i]) {
+          return item(`第 ${i + 1} 空`, false, 0, per, {
+            expected: accepted.join(' / '),
+            got: got[i] ?? '（空）',
+            note: '言之有理即给分，需教师评分',
+          });
+        }
+        const ok = fillMatches(accepted, got[i] ?? '');
         return item(`第 ${i + 1} 空`, ok, ok ? per : 0, per, {
           expected: accepted.join(' / '),
           got: got[i] ?? '（空）',
         });
       });
       const score = items.reduce((s, it) => s + it.score, 0);
+      const needsManual = Boolean(manual?.some(Boolean));
       return {
-        score: Math.round(score * 100) / 100,
-        detail: { items, note: `答对 ${items.filter((i) => i.ok).length}/${items.length} 空` },
+        score: round2(score),
+        detail: {
+          items,
+          note: needsManual
+            ? `自动判分 ${round2(score)} 分，另有空需教师评分`
+            : `答对 ${items.filter((i) => i.ok).length}/${items.length} 空`,
+          needsManual,
+        },
       };
     }
 

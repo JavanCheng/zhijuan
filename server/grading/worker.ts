@@ -43,6 +43,21 @@ async function gradeCodeQuestion(
   cases: TestCase[],
   raw: StudentAnswer | null,
 ): Promise<{ score: number; detail: GradeDetail }> {
+  const scored = cases.filter((c) => c.score > 0);
+  if (!scored.length) {
+    // 没有测试点的代码题（例如真实试卷里的「编程题」只有参考代码）→ 交教师人工评分
+    const answer = parseJson<AnswerSpec | null>(q.answer_json, null);
+    const hasReference = answer?.kind === 'reference' && answer.text.trim().length > 0;
+    return {
+      score: 0,
+      detail: {
+        items: [],
+        note: hasReference ? '没有测试点，按参考答案人工评分' : '没有测试点，需教师评分',
+        needsManual: true,
+      },
+    };
+  }
+
   const code = raw?.code ?? '';
   if (!code.trim()) return { score: 0, detail: { note: '未作答', items: [] } };
 
@@ -51,9 +66,6 @@ async function gradeCodeQuestion(
   if (spec && !spec.languages.includes(language)) {
     return { score: 0, detail: { note: `该题不支持语言 ${language}`, items: [] } };
   }
-
-  const scored = cases.filter((c) => c.score > 0);
-  if (!scored.length) return { score: 0, detail: { note: '题目没有计分测试点', items: [] } };
 
   const items: GradeItem[] = [];
   let runtimeError: string | undefined;

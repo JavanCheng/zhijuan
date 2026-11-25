@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40" role="img" aria-label="智卷">
+  <defs>
+    <linearGradient id="zJg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7ef0c8" />
+      <stop offset="52%" stop-color="#23c79d" />
+      <stop offset="100%" stop-color="#0a7259" />
+    </linearGradient>
+  </defs>
+  <rect width="40" height="40" rx="11.5" fill="url(#zJg)" />
+  <rect x="0.9" y="0.9" width="38.2" height="38.2" rx="10.8" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1.1" />
+  <path d="M10.5 10.5 H22.8 L29.5 17.2 V29.5 H10.5 Z" fill="#fff" />
+  <path d="M22.8 10.5 L29.5 17.2 H22.8 Z" fill="#0a7259" fill-opacity="0.3" />
+  <path d="M14.5 21 L18 24.5 L22.6 18.4" fill="none" stroke="#0a7a5c" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

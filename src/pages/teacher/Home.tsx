@@ -345,7 +345,7 @@ export function TeacherHome() {
             <Input placeholder="例如：高一信息科技 · 第一章单元测" autoFocus />
           </Form.Item>
           <Form.Item label="说明（可选）" name="description">
-            <TextArea rows={3} placeholder="考试范围、注意事项等，学生端可见" maxLength={2000} />
+            <TextArea rows={3} placeholder="考试范围、注意事项等，学生工作台可见" maxLength={2000} />
           </Form.Item>
           <Form.Item label="考试时长（分钟）" name="durationMin" extra="学生开始作答后倒计时，超时自动提交。">
             <InputNumber min={1} max={600} style={{ width: '100%' }} />

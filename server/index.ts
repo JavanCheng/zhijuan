@@ -5,10 +5,11 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import { ROOT, seed } from './db.ts';
+import { DATA_DIR, ROOT, seed } from './db.ts';
 import { cookieSecret } from './auth.ts';
 import { HttpError } from './http.ts';
 import { authRoutes } from './routes/auth.ts';
+import { adminRoutes } from './routes/admin.ts';
 import { teacherRoutes } from './routes/teacher.ts';
 import { studentRoutes } from './routes/student.ts';
 import { analyticsRoutes } from './routes/analytics.ts';
@@ -28,7 +29,7 @@ const app = Fastify({
 });
 
 await app.register(cookie, { secret: cookieSecret() });
-await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
+await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024, files: 2 } });
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof HttpError) {
@@ -45,6 +46,7 @@ app.setErrorHandler((error, _req, reply) => {
 });
 
 await app.register(authRoutes, { prefix: '/api' });
+await app.register(adminRoutes, { prefix: '/api' });
 await app.register(teacherRoutes, { prefix: '/api' });
 await app.register(analyticsRoutes, { prefix: '/api' });
 await app.register(classRoutes, { prefix: '/api' });
@@ -85,12 +87,12 @@ for (const list of Object.values(os.networkInterfaces())) {
 
 const runtime = runtimeStatus();
 console.log('');
-console.log('  智卷 · 信息科技在线测评系统');
+console.log('  智卷 · 在线测评系统（管理员工作台 + 教师工作台 + 学生工作台）');
 console.log('  ────────────────────────────────');
 console.log(`  本机访问   http://127.0.0.1:${PORT}`);
 for (const url of lanUrls) console.log(`  局域网访问 ${url}`);
-console.log(`  数据文件   ${path.join(ROOT, 'data', 'app.db')}`);
+console.log(`  数据文件   ${path.join(DATA_DIR, 'app.db')}`);
 console.log(`  代码运行时 ${runtime.python ? `Python ✓ (${runtime.pythonSource})` : '未配置 Python（代码题将无法评测）'}`);
-console.log('  教师账号   teacher / 123456');
-console.log('  学生账号   s01 ~ s36 / 123456');
+console.log('  管理员     admin / yby19980523（教师账号由管理员在后台创建）');
+console.log('  学生账号   s01 ~ s36 / 123456（学生用姓名 + 学号登录）');
 console.log('');

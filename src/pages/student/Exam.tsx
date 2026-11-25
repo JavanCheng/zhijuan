@@ -17,7 +17,7 @@ import { ArrowLeftOutlined, ClockCircleOutlined, CodeOutlined } from '@ant-desig
 import { api, post, put } from '../../api';
 import type { QuestionStudent, StudentAnswer, StudentExamPage } from '../../../shared/types';
 import { isAnswered } from '../../../shared/grading';
-import { TypeTag, Page } from '../../ui';
+import { TypeTag, Page, SectionMaterial } from '../../ui';
 import { formatCountdown, scoreText } from '../../format';
 
 const { Text } = Typography;
@@ -304,8 +304,26 @@ export function StudentExam() {
   const answeredCount = page.questions.filter((item) => isAnswered(answers[String(item.id)] ?? null)).length;
   const unanswered = page.questions.length - answeredCount;
   const urgent = remaining !== null && remaining < 5 * 60 * 1000;
+  const currentSection =
+    question.sectionIndex != null ? page.sections.find((s) => s.index === question.sectionIndex) : undefined;
   const saveLabel =
     saving === 'saving' ? '保存中…' : saving === 'saved' ? '已自动保存' : saving === 'error' ? '保存失败' : '自动保存已开启';
+
+  const navButton = (item: QuestionStudent, i: number) => {
+    const answered = isAnswered(answers[String(item.id)] ?? null);
+    const active = i === index;
+    return (
+      <Button
+        key={item.id}
+        size="small"
+        type={active ? 'primary' : 'default'}
+        className={!active && answered ? '!border-[var(--brand-line)] !bg-[var(--brand-soft)] !text-[var(--brand-strong)]' : ''}
+        onClick={() => setIndex(i)}
+      >
+        {i + 1}
+      </Button>
+    );
+  };
 
   return (
     <>
@@ -336,7 +354,7 @@ export function StudentExam() {
             </Button>
           </div>
         </div>
-        <div className="absolute bottom-0 left-0 h-[2px] bg-gradient-to-r from-[#6f8cf5] to-[#3358e8] transition-all" style={{ width: `${(answeredCount / Math.max(1, page.questions.length)) * 100}%` }} />
+        <div className="absolute bottom-0 left-0 h-[2px] bg-gradient-to-r from-[var(--brand-from)] to-[var(--brand)] transition-all" style={{ width: `${(answeredCount / Math.max(1, page.questions.length)) * 100}%` }} />
       </div>
 
       <Page className="!py-6">
@@ -344,9 +362,11 @@ export function StudentExam() {
         <div>
           {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
+          {currentSection ? <SectionMaterial section={currentSection} /> : null}
+
           <Card>
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="rounded-lg bg-[#eef2ff] px-2.5 py-1 text-[12.5px] font-semibold text-[#1f3fae]">
+              <span className="rounded-lg bg-[var(--brand-soft)] px-2.5 py-1 text-[12.5px] font-semibold text-[var(--brand-strong)]">
                 第 {index + 1} 题
               </span>
               <TypeTag type={question.type} />
@@ -398,26 +418,27 @@ export function StudentExam() {
               </span>
             }
           >
-            <div className="grid grid-cols-6 gap-2">
-              {page.questions.map((item, i) => {
-                const answered = isAnswered(answers[String(item.id)] ?? null);
-                const active = i === index;
-                return (
-                  <Button
-                    key={item.id}
-                    size="small"
-                    type={active ? 'primary' : 'default'}
-                    className={!active && answered ? '!border-[#c4d2f8] !bg-[#eef2ff] !text-[#1f3fae]' : ''}
-                    onClick={() => setIndex(i)}
-                  >
-                    {i + 1}
-                  </Button>
-                );
-              })}
-            </div>
+            {page.sections.length ? (
+              <div className="grid gap-3">
+                {page.sections.map((section) => {
+                  const rows = page.questions
+                    .map((item, i) => ({ item, i }))
+                    .filter((row) => row.item.sectionIndex === section.index);
+                  if (!rows.length) return null;
+                  return (
+                    <div key={section.index}>
+                      <div className="mb-1.5 text-[11px] font-semibold tracking-wide text-[#98a1b3]">{section.title}</div>
+                      <div className="grid grid-cols-6 gap-2">{rows.map((row) => navButton(row.item, row.i))}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid grid-cols-6 gap-2">{page.questions.map((item, i) => navButton(item, i))}</div>
+            )}
             <div className="mt-3 flex flex-wrap gap-3 text-[11.5px] text-[#7a839a]">
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-[#c4d2f8] bg-[#eef2ff]" /> 已答
+                <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-[var(--brand-line)] bg-[var(--brand-soft)]" /> 已答
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-[#d3daea] bg-white" /> 未答

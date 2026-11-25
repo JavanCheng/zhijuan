@@ -1,7 +1,8 @@
-// Word(.docx) 题目解析：mammoth 转 HTML → 块级状态机 → 结构化题目。
-// 只依赖模板约定，不做"通用试卷理解"，解析结果必须经教师预览确认后才会入库。
-import mammoth from 'mammoth';
-import sanitizeHtml from 'sanitize-html';
+// 模板格式（【题型】标记）的 Word 解析：mammoth 转 HTML → 块级状态机 → 结构化题目。
+// 真实试卷（综合题 + 内联题型 + 独立参考答案）见 paper.ts；本文件负责两套格式的分发。
+import { docxToBlocks, escapeHtml, sanitize, stripTags, type Block } from './html.ts';
+import { DEFAULT_SCORE, LANG_ALIASES, TYPE_ALIASES } from './type-map.ts';
+import { isLegacyTemplate, parseRealPaper } from './paper.ts';
 import type {
   AnswerSpec,
   CodeSpec,
@@ -11,140 +12,6 @@ import type {
   ParsedQuestion,
   QuestionType,
 } from '../../shared/types.ts';
-
-const DEFAULT_SCORE: Record<QuestionType, number> = {
-  single: 5,
-  multiple: 5,
-  truefalse: 3,
-  fill: 5,
-  short: 10,
-  code: 20,
-};
-
-const TYPE_ALIASES: Record<string, QuestionType> = {
-  单选: 'single',
-  单选题: 'single',
-  单项选择: 'single',
-  单项选择题: 'single',
-  多选: 'multiple',
-  多选题: 'multiple',
-  多项选择: 'multiple',
-  多项选择题: 'multiple',
-  判断: 'truefalse',
-  判断题: 'truefalse',
-  填空: 'fill',
-  填空题: 'fill',
-  简答: 'short',
-  简答题: 'short',
-  问答: 'short',
-  问答题: 'short',
-  主观题: 'short',
-  代码: 'code',
-  代码题: 'code',
-  编程: 'code',
-  编程题: 'code',
-};
-
-const LANG_ALIASES: Record<string, string> = {
-  python: 'python',
-  py: 'python',
-  python3: 'python',
-  javascript: 'javascript',
-  js: 'javascript',
-  node: 'javascript',
-  nodejs: 'javascript',
-};
-
-const STEM_TAGS = [
-  'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'sub', 'sup', 'span', 'code', 'pre',
-  'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img', 'h1', 'h2', 'h3', 'h4',
-  'blockquote',
-];
-
-function sanitize(html: string): string {
-  return sanitizeHtml(html, {
-    allowedTags: STEM_TAGS,
-    allowedAttributes: {
-      img: ['src', 'alt', 'width', 'height'],
-      td: ['colspan', 'rowspan'],
-      th: ['colspan', 'rowspan'],
-      '*': ['style'],
-    },
-    allowedStyles: {
-      '*': { 'text-align': [/^(left|center|right)$/], 'font-weight': [/^(bold|normal|[0-9]{3})$/] },
-    },
-    allowedSchemes: ['data', 'http', 'https'],
-    allowedSchemesByTag: { img: ['data', 'http', 'https'] },
-    transformTags: {
-      b: 'strong',
-      i: 'em',
-    },
-  });
-}
-
-function decodeEntities(input: string): string {
-  return input
-    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&amp;/g, '&');
-}
-
-function stripTags(html: string): string {
-  return decodeEntities(
-    html
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/(p|div|li|h[1-6]|tr|td|th|blockquote)>/gi, '\n')
-      .replace(/<[^>]+>/g, ''),
-  );
-}
-
-interface Block {
-  tag: string;
-  html: string;
-  lines: string[];
-}
-
-const BLOCK_RE = /<(p|h[1-6]|table|ul|ol|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gi;
-
-function linesOf(block: Block): string[] {
-  if (block.tag === 'table') {
-    return [...block.html.matchAll(/<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi)]
-      .map((m) => stripTags(m[2]).replace(/\s+/g, ' ').trim())
-      .filter(Boolean);
-  }
-  if (block.tag === 'ul' || block.tag === 'ol') {
-    return [...block.html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)]
-      .map((m) => stripTags(m[1]).replace(/\s+/g, ' ').trim())
-      .filter(Boolean);
-  }
-  return stripTags(block.html)
-    .split('\n')
-    .map((l) => l.replace(/\u3000/g, ' ').trim())
-    .filter(Boolean);
-}
-
-function blockify(html: string): Block[] {
-  const out: Block[] = [];
-  for (const m of html.matchAll(BLOCK_RE)) {
-    const tag = m[1].toLowerCase();
-    out.push({ tag, html: m[0], lines: [] });
-  }
-  if (!out.length) {
-    const text = stripTags(html).trim();
-    if (text) out.push({ tag: 'p', html: `<p>${escapeHtml(text)}</p>`, lines: [text] });
-  }
-  out.forEach((b) => (b.lines = linesOf(b)));
-  return out;
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 function matchHeader(line: string): { type: QuestionType; rest: string } | null {
   const idx = line.search(/[\[【]/);
@@ -397,25 +264,21 @@ function finalize(d: Draft, index: number): ParsedQuestion {
     codeSpec,
     testCases,
     issues,
+    sectionIndex: null,
+    needsManual: d.type === 'short' || (d.type === 'code' && !testCases.length),
   };
 }
 
+/** 旧模板格式的解析入口（【题型】标记）。 */
 export async function parseDocx(buffer: Buffer): Promise<ImportResult> {
-  const { value: rawHtml, messages } = await mammoth.convertToHtml(
-    { buffer },
-    {
-      styleMap: [
-        "p[style-name='Title'] => h1:fresh",
-        "p[style-name='标题'] => h1:fresh",
-        "p[style-name='Heading 1'] => h2:fresh",
-      ],
-    },
-  );
+  const { blocks, warnings } = await docxToBlocks(buffer);
+  return parseLegacyBlocks(blocks, warnings);
+}
 
-  const blocks = blockify(rawHtml);
+/** 已经转成块之后的模板格式解析（供分发器复用，避免重复 mammoth 转换）。 */
+export function parseLegacyBlocks(blocks: Block[], warningCount = 0): ImportResult {
   const notes: string[] = [];
-  const warnings = messages.filter((m) => m.type === 'warning');
-  if (warnings.length) notes.push(`Word 转换提示 ${warnings.length} 条（不影响解析）`);
+  if (warningCount) notes.push(`Word 转换提示 ${warningCount} 条（不影响解析）`);
 
   let title: string | null = null;
   let current: Draft | null = null;
@@ -591,7 +454,51 @@ export async function parseDocx(buffer: Buffer): Promise<ImportResult> {
   return {
     title,
     questions: results,
+    sections: [],
     counts: { total: results.length, errors, warnings: warns, totalScore },
     notes,
   };
 }
+
+/* ───────────────────── 导入入口：两套格式自动分发 ───────────────────── */
+
+export interface ImportFile {
+  buffer: Buffer;
+  filename: string;
+}
+
+const ANSWER_FILE_RE = /答案|参考|answer|key/i;
+
+/**
+ * 统一导入入口：
+ * - 只有一份 docx：自动识别是「模板格式」还是「真实试卷格式」；
+ * - 两份 docx：按文件名把「参考答案」挑出来，真实试卷格式下自动按大题+题号合并。
+ */
+export async function parseExamDocx(files: ImportFile[]): Promise<ImportResult> {
+  if (!files.length) throw new Error('没有收到文件');
+
+  let paper = files[0];
+  let answer: ImportFile | null = null;
+  if (files.length > 1) {
+    const answerIndex = files.findIndex((f) => ANSWER_FILE_RE.test(f.filename));
+    if (answerIndex >= 0) {
+      answer = files[answerIndex];
+      paper = files.find((_, i) => i !== answerIndex) ?? files[0];
+    } else {
+      paper = files[0];
+      answer = files[1];
+    }
+  }
+
+  const { blocks, warnings } = await docxToBlocks(paper.buffer);
+  if (isLegacyTemplate(blocks)) {
+    const result = parseLegacyBlocks(blocks, warnings);
+    if (answer) result.notes.push('模板格式（【题型】）的答案写在题目文档里，已忽略参考答案文件');
+    return result;
+  }
+
+  const result = await parseRealPaper(paper.buffer, answer ? answer.buffer : null, { blocks, warnings });
+  if (answer) result.notes.unshift(`已合并参考答案：${answer.filename}`);
+  return result;
+}
+

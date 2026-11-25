@@ -10,7 +10,7 @@ import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ConfigProvider locale={zhCN} theme={themeConfig}>
+    <ConfigProvider locale={zhCN} theme={themeConfig} modal={{ centered: true }}>
       <AntApp>
         <BrowserRouter>
           <AuthProvider>

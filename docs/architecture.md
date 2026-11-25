@@ -15,14 +15,15 @@
 
 ```text
 ┌──────────────────────────── 浏览器 ────────────────────────────┐
-│  学生端 /student/*                教师端 /teacher/*             │
+│  管理员 /admin/*   教师端 /teacher/*   学生端 /student/*         │
 │  React 19 + antd v6 + Tailwind CSS v4 + ECharts 6              │
 └───────────────┬────────────────────────────────────────────────┘
                 │ fetch /api/*（同源，Cookie 会话）
 ┌───────────────▼────────────────────────────────────────────────┐
 │ Fastify 5（server/index.ts）                                    │
 │  ├─ 静态托管 dist/ + SPA 兜底（非 /api 全部回 index.html）        │
-│  ├─ routes/auth       教师登录、学生登录、退出、me、runtime        │
+│  ├─ routes/auth       管理员/教师/学生登录、退出、me、runtime      │
+│  ├─ routes/admin      教师账号：新增、编辑、启停、批量             │
 │  ├─ routes/teacher    考试、导入、题目、批改、发布                │
 │  ├─ routes/classes    班级、学生名册、Excel/CSV 导入              │
 │  ├─ routes/analytics  学情看板、学生画像                          │
@@ -50,12 +51,18 @@
 
 ## 3. 关键流程
 
-### 3.0 登录与名册
+### 3.0 登录、名册与教师账号
 
 ```text
+管理员 /admin/login
+  → POST /auth/admin/login { username, password }
+  → 校验 role = admin + scrypt 口令 + is_active
+  → 签发 HttpOnly Cookie
+
 教师 /teacher/login
-  → POST /auth/teacher/login { username, password }
+  → POST /auth/teacher/login { username = 手机号/账号, password }
   → 校验 role = teacher + scrypt 口令 + is_active
+  → 新教师由管理员创建：username = phone，初始 password = phone
   → 签发 HttpOnly Cookie
 
 学生 /student/login
@@ -63,6 +70,10 @@
   → 校验 role = student、student_no + name 与名册完全匹配、is_active = 1
   → 未录入 / 已停用 → 401 / 403
   → 签发 HttpOnly Cookie
+
+管理员创建教师
+  → POST /admin/teachers { name, phone }
+  → 手机号唯一，写入 users.role = teacher、username = phone、password_hash = scrypt(phone)
 
 教师导入名册
   → POST /teacher/students/import（multipart：.xlsx / .xls / .csv）
@@ -72,6 +83,9 @@
   → 无错误：事务内创建缺失班级、按学号新增/更新学生、is_active = 1
   → 返回 summary（读取行数、新建/更新/恢复人数）
 ```
+
+> 权限边界：`requireAdmin` 只放行 `role='admin'`，`requireTeacher` 只放行 `role='teacher'`。
+> 管理员与教师互不越权；教师接口不接受管理员会话，管理员接口也不接受教师会话。
 
 ### 3.1 出卷
 
@@ -142,7 +156,7 @@
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
 | `classes` | name, grade, sort_order | 班级字典，按 sort_order 展示 |
-| `users` | username, password_hash, name, role, student_no, class_id, is_active | 师生同表；学生通过 class_id 归属班级，student_no 唯一，is_active 控制登录 |
+| `users` | username, password_hash, name, role, phone, student_no, class_id, is_active | 三类角色同表：admin / teacher / student；教师 username = phone（手机号唯一），学生通过 class_id 归属班级，student_no 唯一，is_active 控制登录 |
 | `exams` | title, teacher_id, status, duration_min, start_at, end_at, results_published | 状态机 draft→published→closed |
 | `questions` | exam_id, seq, type, stem_html, score, options_json, answer_json, explanation_html, code_spec_json | 答案与代码配置存 JSON |
 | `test_cases` | question_id, seq, stdin, expected_stdout, score, visible | visible=1 学生可见 |
@@ -157,9 +171,12 @@
 - `answers.raw_json` 按题型存不同结构（`{key}` / `{keys}` / `{value}` / `{blanks}` / `{text}` / `{language,code}`）。
 - `auto_detail_json` 保存可解释证据，教师端直接渲染。
 - 题目/测试点删除依赖外键 `ON DELETE CASCADE`，并发一致性靠单进程串行写。
-- 老库升级：启动时检测 `users.class_id`、`users.is_active`，缺失则 `ALTER TABLE`；并尝试创建 `student_no` 唯一索引，未分班学生按人数均匀分配。
+- 老库升级：启动时检测 `users.class_id`、`users.is_active`、`users.phone`，缺失则 `ALTER TABLE`；并尝试创建 `student_no` 与教师 `phone` 唯一索引，未分班学生按人数均匀分配。
+- 管理员升级：旧版 `admin` 账号实际是教师角色，启动时升级为 `role='admin'`（姓名 `Admin`）；若其名下有考试，会先创建一个教师账号（用户名 `teacher`，密码沿用旧密码）承接历史考试，避免数据丢失。旧默认密码 `123456` 会升级为 `yby19980523`，管理员自行改过的密码保持不变。
 - 学生登录不验证密码：`student_no + name` 命中名册且 `is_active = 1` 即放行；适用于可信课堂，公网部署需加密码或统一身份认证。
 - 名册导入按 `student_no` 做幂等 upsert：已存在则更新姓名/班级并重新启用；文件内重复学号直接阻断整批导入。
+- 教师账号由管理员逐个新增：手机号唯一，同时作为登录账号和初始密码。
+- 删除教师时先清理 `grading_tasks`，再删除 `exams`，题目 / 答卷 / 成绩由外键级联清除；停用只改 `users.is_active`，不删除任何考试数据。
 
 ---
 
@@ -179,12 +196,17 @@ server/runner/run.ts     执行器：进程、超时、输出截断、清理
 
 1. `shared/types.ts`：`QuestionType` 加枚举 + `AnswerSpec` 加分支。
 2. `shared/grading.ts`：加 `gradeObjective` 分支（若可自动判分）。
-3. `server/import/docx.ts`：加别名与答案解析、校验。
+3. `server/import/type-map.ts`：加题型别名；`server/import/docx.ts`（模板格式）与 `server/import/paper.ts`（真实试卷格式）各补答案解析与校验。
 4. 前端：`AnswerInput` 加渲染、`formatStudentAnswer` / `formatAnswerSpec` 加展示。
 5. 题库列表的 `TYPE_LABEL` / `TYPE_TONE` 补一条。
 
-### 5.3 代码题
+### 5.3 大题（材料题）与部分分
 
+- 大题存在 `exams.sections_json`，题目只用 `questions.section_index` 引用；材料（含图片、表格）由组内小题共用，学生端与批改台只渲染一次。
+- `AnswerSpec` 的可选字段承载真实卷的判分规则：`choice.missedDeduct`（多选漏选扣分）、`fill.blankScores`（逐空分值）、`fill.manualBlanks`（言之有理 → 人工）。
+- `questions.needs_manual` 在导入时算好（简答、无测试点的代码题、含人工空的填空），供批改列表统计「待人工复核」。
+
+### 5.4 代码题
 - 每个测试点单独一次执行（隔离彻底、互不影响），超时后 `taskkill /T` 结束进程树。
 - 未作答直接 0 分，不启动进程。
 - 运行时缺失时写入 `runtimeError`，题目记 0 分且界面明确提示，不静默失败。
@@ -194,12 +216,17 @@ server/runner/run.ts     执行器：进程、超时、输出截断、清理
 
 ## 6. 前端结构
 
-- 路由按角色分区，`RequireRole` 负责未登录跳转与越权重定向；教师/学生分别跳转 `/teacher/login`、`/student/login`，`/login` 为入口选择页。
+- 路由按角色分区，`RequireRole` 负责未登录跳转与越权重定向；管理员/教师/学生分别跳转 `/admin/login`、`/teacher/login`、`/student/login`，`/login` 为入口选择页。
 - 数据获取用 `fetch` 封装（`src/api.ts`），页面自行管理状态，未引入额外状态库。
+- 管理员端：独立 `AdminShell`（紫色主题）与「教师账号」一级入口，支持新增、编辑、启停、重置密码、批量操作与统计概览。
 - 教师端：考试管理、学情看板、班级管理三个一级入口；试卷 → 批改列表 → 单份批改用例层级导航。
 - 班级管理：班级卡片 + 学生名册表格，支持 Excel/CSV 上传、模板下载、手动增改、启停、软删除。
 - 学生端：列表 → 作答（单题 + 答题卡 + 倒计时 + 自动保存）→ 成绩（轮询至发布）。
 - 组件全部来自 **antd v6**（Layout / Menu / Table / Form / Upload / Modal / Statistic / Result 等），通过 `ConfigProvider` 统一主题色、圆角与字体；`src/theme.ts` 是唯一的主题入口。
+- **三套主题**：管理员端紫（`adminTheme`）、教师端蓝（`teacherTheme`）、学生端绿（`studentTheme`）。学生工作台与 `/student/login` 在 `ConfigProvider` 内嵌 `studentTheme`，并在容器上加 `.tone-student`；管理员工作台同理加 `.tone-admin`。页面里用 `var(--brand*)` 取色（`link-brand`、`option-list` 等 unlayered 规则优先于 antd 全局样式）。品牌标记 `BrandMark` 有 `tone="blue|green|purple"` 三种渐变。
+- 品牌名「智卷」的文字也要跟着角色走（`.wordmark-on-dark` / `.wordmark-ink`）：它包在 `<a>` 里，会被 antd 全局链接色染成蓝色，所以不能只靠继承。浏览器标签图标同理，`useFavicon(tone)`（`src/favicon.ts`）把 `link[rel=icon]` 换成 `favicon.svg`（蓝）、`favicon-green.svg`（绿）或 `favicon-purple.svg`（紫）。
+- 登录页左半的底色也分角色：`.login-hero` 是教师蓝，`.tone-student .login-hero` 覆盖成深青绿（绿光晕 + 青色补光），否则绿色 logo 会压在蓝底上。
+- 登录页左侧主视觉是纯 SVG（`src/pages/loginArt.tsx`），管理员入口复用教师端构图但使用紫色主色；教师端与学生端是两套不同构图，均不含文案。
 - 布局与间距使用 **Tailwind CSS v4** 工具类（未引入 preflight，避免覆盖 antd 基础样式；在 `src/styles.css` 中补了边框与盒模型重置）。
 - 图表统一走 `src/charts/Chart.tsx`：按需注册 ECharts 模块（Bar / Line / Pie / Radar + Canvas），`ResizeObserver` 跟随容器缩放；学情看板路由使用 `React.lazy` 拆分，首屏不加载 ECharts。
 - 少量无法用组件表达的样式（题干 HTML 排版、代码编辑器、深色工具栏、登录渐变主视觉、侧边栏与图表容器）保留在 `src/styles.css`。
@@ -218,9 +245,10 @@ server/runner/run.ts     执行器：进程、超时、输出截断、清理
 | 草稿丢失 | 前端 900ms 防抖自动保存 + 离开页面二次确认 |
 | 重新导入覆盖成绩 | 已存在提交时拒绝重新导入 / 删题 |
 | 未录入学生登录 | 学生登录仅按 `student_no + name` 查 `role='student'` 且 `is_active=1`，无自助注册 |
+| 教师账号来源 | 教师不能自行注册，只能由管理员新增；手机号唯一，停用即无法登录 |
 | 学生冒用身份 | 当前为课堂信任模式，姓名+学号可被同学知晓；公网部署需加密码 / 验证码 / SSO |
-| 弱口令 | 教师口令 scrypt 加盐哈希；演示账号 `teacher/123456`，上线前应强制改密 |
-| 名册导入污染 | 先解析并做行级校验，任何错误整批不写入；学号唯一索引兜底 |
+| 弱口令 | 管理员 / 教师口令均为 scrypt 加盐哈希；默认管理员 `admin/yby19980523`，教师初始密码为手机号，上线前应强制改密 |
+| 名册导入污染 | 先解析并做行级校验，任何错误整批不写入；学号 / 教师手机号唯一索引兜底 |
 | 代码滥用资源 | 超时、输出上限、临时目录、`-I` 隔离；**无容器隔离**，仅限可信内网 |
 | 会话 | HMAC 签名 Cookie（httpOnly, sameSite=lax, 7 天） |
 

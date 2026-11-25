@@ -62,12 +62,20 @@ export function formatAnswerSpec(
 ): string {
   if (!spec) return '—';
   switch (spec.kind) {
-    case 'choice':
-      return spec.keys.map((k) => `${k}. ${optionText(options, k)}`).join('\n');
+    case 'choice': {
+      const missed = spec.missedDeduct != null ? `（漏选每个扣 ${spec.missedDeduct} 分）` : '';
+      return spec.keys.map((k) => `${k}. ${optionText(options, k)}`).join('\n') + missed;
+    }
     case 'bool':
       return spec.value ? '正确' : '错误';
     case 'fill':
-      return spec.blanks.map((accepted, i) => `第 ${i + 1} 空：${accepted.join(' / ')}`).join('\n');
+      return spec.blanks
+        .map((accepted, i) => {
+          const score = spec.blankScores?.[i];
+          const notes = [score != null ? `${score} 分` : '', spec.manualBlanks?.[i] ? '需人工评分' : ''].filter(Boolean);
+          return `第 ${i + 1} 空：${accepted.join(' / ')}${notes.length ? `（${notes.join('，')}）` : ''}`;
+        })
+        .join('\n');
     case 'reference':
       return spec.text || '（无参考答案）';
     default:

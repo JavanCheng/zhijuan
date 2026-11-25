@@ -2,8 +2,10 @@
 // 用法：pnpm build && pnpm start，然后 node scripts/analytics-check.mjs
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
+import { ensureDemoTeacher } from './lib/teacher-session.mjs';
 
 const BASE = 'http://127.0.0.1:8787';
+const demoTeacher = await ensureDemoTeacher(BASE);
 const OUT = 'audit';
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -24,8 +26,8 @@ async function session(width = 1440, height = 900) {
 
 async function loginTeacher(page) {
   await page.goto(`${BASE}/teacher/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[autocomplete="username"]', 'teacher');
-  await page.fill('input[type="password"]', '123456');
+  await page.fill('input[autocomplete="username"]', demoTeacher.phone);
+  await page.fill('input[type="password"]', demoTeacher.password);
   await page.click('button[type="submit"]');
 }
 

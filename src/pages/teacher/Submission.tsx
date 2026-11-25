@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -20,7 +20,7 @@ import {
 import { ArrowLeftOutlined, CheckCircleFilled, CloseCircleFilled, SaveOutlined } from '@ant-design/icons';
 import { api, patch } from '../../api';
 import type { GradeDetail, QuestionTeacher, SubmissionDetailTeacher } from '../../../shared/types';
-import { Page, PageHeader, Pill, SubmissionStatusTag, TypeTag } from '../../ui';
+import { Page, PageHeader, Pill, SectionMaterial, SubmissionStatusTag, TypeTag } from '../../ui';
 import { formatAnswerSpec, formatDate, formatStudentAnswer, scoreText } from '../../format';
 
 const { Text } = Typography;
@@ -168,22 +168,26 @@ export function TeacherSubmission() {
 
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={17}>
-          {data.questions.map((q) => {
+          {data.questions.map((q, qIndex) => {
             const answer = answerOf(q.id);
             const draft = drafts[q.id];
             const detail: GradeDetail | null = answer?.autoDetail ?? null;
             const items = detail?.items ?? [];
-            const isManual = q.type === 'short';
+            const isManual = q.needsManual || q.type === 'short';
             const answered = !!answer?.raw;
             const tone = questionTone(q);
+            const section = q.sectionIndex != null ? data.sections.find((s) => s.index === q.sectionIndex) : undefined;
+            const isSectionStart =
+              Boolean(section) && data.questions.findIndex((item) => item.sectionIndex === q.sectionIndex) === qIndex;
 
             return (
-              <Card
-                key={q.id}
-                id={`question-${q.id}`}
-                className="mb-4"
-                style={{ scrollMarginTop: 84, borderLeft: `3px solid ${tone}` }}
-              >
+              <Fragment key={q.id}>
+                {isSectionStart && section ? <SectionMaterial section={section} /> : null}
+                <Card
+                  id={`question-${q.id}`}
+                  className="mb-4"
+                  style={{ scrollMarginTop: 84, borderLeft: `3px solid ${tone}` }}
+                >
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <span className="rounded-lg bg-[#eef2ff] px-2.5 py-1 text-[12.5px] font-semibold text-[#1f3fae]">
                     第 {q.seq} 题
@@ -318,7 +322,8 @@ export function TeacherSubmission() {
                     }
                   />
                 </div>
-              </Card>
+                </Card>
+              </Fragment>
             );
           })}
         </Col>

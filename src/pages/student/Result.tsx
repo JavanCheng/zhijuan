@@ -5,7 +5,7 @@ import { ArrowLeftOutlined, CheckCircleOutlined, ClockCircleOutlined, TrophyOutl
 import { api } from '../../api';
 import { useAuth } from '../../auth';
 import type { StudentResultPage } from '../../../shared/types';
-import { Page, PageHeader, Pill, TypeTag } from '../../ui';
+import { Page, PageHeader, Pill, SectionMaterial, TypeTag } from '../../ui';
 import { formatAnswerSpec, formatDate, formatStudentAnswer, scoreText } from '../../format';
 
 const { Title, Text } = Typography;
@@ -123,14 +123,20 @@ export function StudentResult() {
           </div>
 
           <div className="grid gap-3">
-            {data.questions.map((question) => {
+            {data.questions.map((question, qIndex) => {
               const score = question.finalScore ?? 0;
               const rate = Math.round((score / Math.max(1, question.score)) * 100);
               const color = score <= 0 ? '#bf3737' : score >= question.score ? '#0f7a56' : '#a3680d';
+              const section =
+                question.sectionIndex != null ? data.sections.find((s) => s.index === question.sectionIndex) : undefined;
+              const isSectionStart =
+                Boolean(section) && data.questions.findIndex((q) => q.sectionIndex === question.sectionIndex) === qIndex;
               return (
-                <Card key={question.id}>
+                <div key={question.id}>
+                  {isSectionStart && section ? <SectionMaterial section={section} /> : null}
+                  <Card>
                   <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <span className="rounded-lg bg-[#eef2ff] px-2.5 py-1 text-[12.5px] font-semibold text-[#1f3fae]">
+                    <span className="rounded-lg bg-[var(--brand-soft)] px-2.5 py-1 text-[12.5px] font-semibold text-[var(--brand-strong)]">
                       第 {question.seq} 题
                     </span>
                     <TypeTag type={question.type} />
@@ -182,6 +188,7 @@ export function StudentResult() {
                     </div>
                   ) : null}
                 </Card>
+                </div>
               );
             })}
           </div>
@@ -197,7 +204,7 @@ export function StudentResult() {
             </Card>
             <Card styles={{ body: { padding: 16 } }}>
               <div className="text-[11.5px] text-[#98a1b3]">得分率</div>
-              <div className="mt-1 text-[22px] font-semibold text-[#3358e8]">{scoreRate}%</div>
+              <div className="mt-1 text-[22px] font-semibold text-[var(--brand)]">{scoreRate}%</div>
             </Card>
             <Card styles={{ body: { padding: 16 } }}>
               <div className="text-[11.5px] text-[#98a1b3]">状态</div>
@@ -211,7 +218,7 @@ export function StudentResult() {
         <Card>
           <div className="mx-auto max-w-[640px] px-2 py-10">
             <div className="mb-8 text-center">
-              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#eef2ff] text-[24px] text-[#3358e8]">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--brand-soft)] text-[24px] text-[var(--brand)]">
                 {data.submission.status === 'grading' ? <Spin /> : <ClockCircleOutlined />}
               </div>
               <Title level={4} className="!mb-2 !mt-5">

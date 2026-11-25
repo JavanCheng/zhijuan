@@ -2,13 +2,15 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { FastifyRequest } from 'fastify';
+import type { Role } from '../shared/types.ts';
 import { DATA_DIR, get } from './db.ts';
 
 export interface SessionUser {
   id: number;
   username: string;
   name: string;
-  role: 'teacher' | 'student';
+  role: Role;
+  phone: string | null;
   studentNo: string | null;
   classId: number | null;
   className: string | null;
@@ -39,13 +41,14 @@ export function currentUser(req: FastifyRequest): SessionUser | null {
     id: number;
     username: string;
     name: string;
-    role: 'teacher' | 'student';
+    role: Role;
+    phone: string | null;
     student_no: string | null;
     class_id: number | null;
     class_name: string | null;
     is_active: number;
   }>(
-    `SELECT u.id, u.username, u.name, u.role, u.student_no, u.class_id, u.is_active, c.name AS class_name
+    `SELECT u.id, u.username, u.name, u.role, u.phone, u.student_no, u.class_id, u.is_active, c.name AS class_name
      FROM users u LEFT JOIN classes c ON c.id = u.class_id WHERE u.id = ?`,
     id,
   );
@@ -55,6 +58,7 @@ export function currentUser(req: FastifyRequest): SessionUser | null {
     username: row.username,
     name: row.name,
     role: row.role,
+    phone: row.phone,
     studentNo: row.student_no,
     classId: row.class_id,
     className: row.class_name,

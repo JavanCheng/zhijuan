@@ -1,7 +1,8 @@
-# 生成一场示例考试（需服务已启动）：导入 templates/题目模板.docx 并发布
+# 生成一场示例考试（需服务已启动）：管理员准备演示教师 → 导入模板 → 发布
 $ErrorActionPreference = 'Stop'
-$base = 'http://127.0.0.1:8787'
+$base = if ($env:ZHIJUAN_BASE) { $env:ZHIJUAN_BASE.TrimEnd('/') } else { 'http://127.0.0.1:8787' }
 $jsonType = 'application/json; charset=utf-8'
+$demoPhone = '13800000000'
 
 function ToBytes($obj) {
   $json = $obj | ConvertTo-Json -Depth 30 -Compress
@@ -14,7 +15,21 @@ function Api($method, $path, $body, $session) {
   return Invoke-RestMethod @params
 }
 
-$login = Invoke-RestMethod -Uri "$base/api/auth/teacher/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 'teacher'; password = '123456' }) -SessionVariable tea
+$adminLogin = Invoke-RestMethod -Uri "$base/api/auth/admin/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = 'admin'; password = 'yby19980523' }) -SessionVariable adminS
+Write-Host "管理员登录：$($adminLogin.user.name)"
+
+$overview = Api 'Get' '/api/admin/overview' $null $adminS
+$demo = @($overview.teachers | Where-Object { $_.phone -eq $demoPhone }) | Select-Object -First 1
+if (-not $demo) {
+  $demo = Api 'Post' '/api/admin/teachers' @{ name = '演示教师'; phone = $demoPhone } $adminS
+  Write-Host "已创建演示教师：$demoPhone / $demoPhone"
+} else {
+  if (-not $demo.isActive) { Api 'Patch' "/api/admin/teachers/$($demo.id)" @{ isActive = $true } $adminS | Out-Null }
+  Api 'Post' "/api/admin/teachers/$($demo.id)/reset-password" @{} $adminS | Out-Null
+  Write-Host "演示教师已存在：$demoPhone / $demoPhone"
+}
+
+$login = Invoke-RestMethod -Uri "$base/api/auth/teacher/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ username = $demoPhone; password = $demoPhone }) -SessionVariable tea
 Write-Host "教师登录：$($login.user.name)"
 
 $existing = Api 'Get' '/api/teacher/exams' $null $tea

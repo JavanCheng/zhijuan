@@ -1,13 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
+import type { Role } from '../shared/types';
 import { api, post } from './api';
 
 export interface User {
   id: number;
   username: string;
   name: string;
-  role: 'teacher' | 'student';
+  role: Role;
+  phone?: string | null;
   studentNo?: string | null;
   classId?: number | null;
   className?: string | null;
@@ -17,7 +19,8 @@ export interface User {
 interface AuthState {
   user: User | null;
   loading: boolean;
-  loginTeacher: (username: string, password: string) => Promise<User>;
+  loginAdmin: (username: string, password: string) => Promise<User>;
+  loginTeacher: (account: string, password: string) => Promise<User>;
   loginStudent: (name: string, studentNo: string) => Promise<User>;
   logout: () => Promise<void>;
 }
@@ -35,8 +38,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const loginTeacher = useCallback(async (username: string, password: string) => {
-    const data = await post<{ user: User }>('/api/auth/teacher/login', { username, password });
+  const loginAdmin = useCallback(async (username: string, password: string) => {
+    const data = await post<{ user: User }>('/api/auth/admin/login', { username, password });
+    setUser(data.user);
+    return data.user;
+  }, []);
+
+  const loginTeacher = useCallback(async (account: string, password: string) => {
+    const data = await post<{ user: User }>('/api/auth/teacher/login', { username: account, password });
     setUser(data.user);
     return data.user;
   }, []);
@@ -53,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginTeacher, loginStudent, logout }}>
+    <AuthContext.Provider value={{ user, loading, loginAdmin, loginTeacher, loginStudent, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -65,11 +74,13 @@ export function useAuth(): AuthState {
   return ctx;
 }
 
-export function homeOf(role: 'teacher' | 'student'): string {
+export function homeOf(role: Role): string {
+  if (role === 'admin') return '/admin';
   return role === 'teacher' ? '/teacher' : '/student';
 }
 
-export function loginPathOf(role: 'teacher' | 'student'): string {
+export function loginPathOf(role: Role): string {
+  if (role === 'admin') return '/admin/login';
   return role === 'teacher' ? '/teacher/login' : '/student/login';
 }
 
@@ -81,7 +92,7 @@ function LoadingScreen() {
   );
 }
 
-export function RequireRole({ role, children }: { role: 'teacher' | 'student'; children: ReactNode }) {
+export function RequireRole({ role, children }: { role: Role; children: ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to={loginPathOf(role)} replace />;

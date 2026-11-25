@@ -1,6 +1,6 @@
 // 前后端共用的类型定义。任何评分规则、题型字段的改动都应先改这里。
 
-export type Role = 'teacher' | 'student';
+export type Role = 'admin' | 'teacher' | 'student';
 
 export type QuestionType = 'single' | 'multiple' | 'truefalse' | 'fill' | 'short' | 'code';
 
@@ -24,12 +24,32 @@ export interface Option {
   text: string;
 }
 
+/**
+ * 客观题答案。各字段都向后兼容：老数据只带 kind + 主体字段。
+ * - choice.missedDeduct：漏选扣分（每个漏选扣多少分），不填表示必须全对。
+ * - fill.blankScores：逐空分值（缺省按满分平均分配）。
+ * - fill.manualBlanks：该空「言之有理即给分」，只能人工评分。
+ */
 export type AnswerSpec =
-  | { kind: 'choice'; keys: string[] }
+  | { kind: 'choice'; keys: string[]; missedDeduct?: number }
   | { kind: 'bool'; value: boolean }
-  | { kind: 'fill'; blanks: string[][] }
+  | { kind: 'fill'; blanks: string[][]; blankScores?: number[]; manualBlanks?: boolean[] }
   | { kind: 'reference'; text: string }
   | { kind: 'none' };
+
+/** 大题（材料题）分组：综合题一 / 综合题二…，材料只展示一次，小题挂在组下。 */
+export interface QuestionSection {
+  /** 0 起的组序号，与 ParsedQuestion.sectionIndex 对应 */
+  index: number;
+  /** 中文序号或数字，用于和参考答案对齐：'一' / '1' */
+  key: string;
+  /** 展示用标题：'综合题一' */
+  title: string;
+  /** 该大题声明分值，如 23 */
+  score: number | null;
+  /** 材料正文（HTML，可含图片/表格） */
+  html: string;
+}
 
 export interface CodeSpec {
   languages: string[];
@@ -59,6 +79,10 @@ export interface QuestionTeacher {
   explanationHtml: string | null;
   codeSpec: CodeSpec | null;
   testCases: TestCase[];
+  /** 所属大题序号（对应 ExamDetailTeacher.sections[].index），null 表示独立题目 */
+  sectionIndex: number | null;
+  /** 需要教师人工评分（简答、无测试点的代码题、含「言之有理」空的填空题） */
+  needsManual: boolean;
 }
 
 /** 学生视角：绝不下发答案与隐藏测试点 */
@@ -72,6 +96,7 @@ export interface QuestionStudent {
   blanks: number;
   codeSpec: { languages: string[]; starterCode: string; timeLimitMs: number } | null;
   sampleCases: { stdin: string; expectedStdout: string; label: string }[];
+  sectionIndex: number | null;
 }
 
 export interface StudentAnswer {
@@ -100,6 +125,7 @@ export interface ExamSummary {
 
 export interface ExamDetailTeacher extends ExamSummary {
   questions: QuestionTeacher[];
+  sections: QuestionSection[];
   submissionCount: number;
 }
 
@@ -119,11 +145,14 @@ export interface ParsedQuestion {
   codeSpec: CodeSpec | null;
   testCases: { stdin: string; expectedStdout: string; score: number; visible: boolean }[];
   issues: ImportIssue[];
+  sectionIndex: number | null;
+  needsManual: boolean;
 }
 
 export interface ImportResult {
   title: string | null;
   questions: ParsedQuestion[];
+  sections: QuestionSection[];
   counts: { total: number; errors: number; warnings: number; totalScore: number };
   notes: string[];
 }
@@ -178,6 +207,7 @@ export interface SubmissionDetailTeacher extends SubmissionRow {
   examTitle: string;
   examTotalScore: number;
   questions: QuestionTeacher[];
+  sections: QuestionSection[];
   answers: AnswerTeacher[];
   totalAutoScore: number;
 }
@@ -192,6 +222,7 @@ export interface StudentExamPage {
     deadlineAt: string | null;
   };
   questions: QuestionStudent[];
+  sections: QuestionSection[];
   answers: Record<string, StudentAnswer>;
 }
 
@@ -217,7 +248,9 @@ export interface StudentResultPage {
     answer: AnswerSpec | null;
     explanationHtml: string | null;
     raw: StudentAnswer | null;
+    sectionIndex: number | null;
   }>;
+  sections: QuestionSection[];
 }
 
 /* ── 班级与学情看板 ───────────────────────────────────── */
@@ -443,4 +476,40 @@ export interface RosterImportResult {
   summary: RosterImportSummary;
   errors: RosterIssue[];
   warnings: RosterIssue[];
+}
+
+/* ── 管理员：教师账号 ─────────────────────────────────── */
+
+export interface ManagedTeacher {
+  id: number;
+  /** 登录账号：新教师就是手机号；历史账号可能仍是旧用户名 */
+  username: string;
+  name: string;
+  phone: string | null;
+  isActive: boolean;
+  createdAt: string;
+  examCount: number;
+  submissionCount: number;
+}
+
+export interface TeacherOverview {
+  teachers: ManagedTeacher[];
+  total: number;
+  active: number;
+  inactive: number;
+  withExams: number;
+  examCount: number;
+}
+
+export interface DeleteTeacherResult {
+  ok: boolean;
+  deleted: boolean;
+  purgedExams: number;
+}
+
+export interface BatchTeacherResult {
+  ok: boolean;
+  affected: number;
+  deleted: number;
+  purgedExams: number;
 }

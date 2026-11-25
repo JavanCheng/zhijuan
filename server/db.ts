@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { hashPassword } from './password.ts';
+import { hashPassword, verifyPassword } from './password.ts';
 
 export const ROOT = path.resolve(import.meta.dirname, '..');
 export const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL,
   student_no TEXT,
   class_id INTEGER REFERENCES classes(id),
+  phone TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
@@ -123,6 +124,14 @@ CREATE INDEX IF NOT EXISTS idx_submissions_exam ON submissions(exam_id);
 
 type Param = string | number | null;
 
+// 老库升级：大题分组与人工评分标记是后来新增的列
+ensureColumn('exams', 'sections_json', "sections_json TEXT NOT NULL DEFAULT '[]'");
+ensureColumn('questions', 'section_index', 'section_index INTEGER');
+ensureColumn('questions', 'needs_manual', 'needs_manual INTEGER NOT NULL DEFAULT 0');
+// 教师用手机号作为登录账号（管理员在后台创建教师时录入）
+ensureColumn('users', 'phone', 'phone TEXT');
+
+
 export function all<T = Record<string, unknown>>(sql: string, ...params: Param[]): T[] {
   return db.prepare(sql).all(...params) as unknown as T[];
 }
@@ -191,6 +200,19 @@ function ensureClasses(): { id: number; name: string }[] {
     console.warn(`[db] 学号重复，暂未创建唯一索引：${duplicate.student_no}`);
   }
 
+  const phoneDuplicate = get<{ phone: string }>(
+    `SELECT phone FROM users
+     WHERE role = 'teacher' AND phone IS NOT NULL AND phone <> ''
+     GROUP BY phone HAVING COUNT(*) > 1 LIMIT 1`,
+  );
+  if (!phoneDuplicate) {
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_teacher_phone ON users(phone) WHERE role = 'teacher' AND phone IS NOT NULL AND phone <> ''",
+    );
+  } else {
+    console.warn(`[db] 教师手机号重复，暂未创建唯一索引：${phoneDuplicate.phone}`);
+  }
+
   const ts = nowIso();
   const existing = get<{ c: number }>('SELECT COUNT(*) AS c FROM classes')?.c ?? 0;
   if (existing === 0) {
@@ -220,17 +242,139 @@ function assignMissingClassIds(): void {
   });
 }
 
+/** 默认管理员账号。管理员与教师是两个独立角色，管理员不参与出卷/阅卷。 */
+export const DEFAULT_ADMIN = { username: 'admin', password: 'yby19980523', name: 'Admin' } as const;
+
+/** 旧版本的默认密码，仅用于判断要不要升级成新的默认密码。 */
+const LEGACY_ADMIN_PASSWORD = '123456';
+
+interface AdminRow {
+  id: number;
+  username: string;
+  name: string;
+  role: string;
+  password_hash: string;
+}
+
+function insertAdmin(): void {
+  run(
+    'INSERT INTO users (username, password_hash, name, role, student_no, class_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    DEFAULT_ADMIN.username,
+    hashPassword(DEFAULT_ADMIN.password),
+    DEFAULT_ADMIN.name,
+    'admin',
+    null,
+    null,
+    nowIso(),
+  );
+}
+
+/**
+ * 老版本的 admin 实际是「教师」，历史考试也挂在他名下。
+ * 升级时把历史考试交给一个教师账号（密码沿用旧密码），再把 admin 升级为独立管理员。
+ */
+function ensureLegacyTeacherFor(admin: AdminRow): number {
+  const existing = get<{ id: number }>(
+    "SELECT id FROM users WHERE username = 'teacher' AND role = 'teacher' AND id <> ?",
+    admin.id,
+  );
+  if (existing) return existing.id;
+
+  const taken = get<{ id: number }>('SELECT id FROM users WHERE username = ? AND id <> ?', 'teacher', admin.id);
+  const username = taken || admin.username === 'teacher' ? `teacher_${admin.id}` : 'teacher';
+  const inserted = run(
+    'INSERT INTO users (username, password_hash, name, role, student_no, class_id, phone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    username,
+    admin.password_hash,
+    admin.name,
+    'teacher',
+    null,
+    null,
+    null,
+    nowIso(),
+  );
+  return inserted.lastInsertRowid;
+}
+
+function promoteLegacyAdmin(admin: AdminRow): void {
+  const ownedExams =
+    get<{ c: number }>('SELECT COUNT(*) AS c FROM exams WHERE teacher_id = ?', admin.id)?.c ?? 0;
+  if (ownedExams > 0) {
+    const teacherId = ensureLegacyTeacherFor(admin);
+    run('UPDATE exams SET teacher_id = ? WHERE teacher_id = ?', teacherId, admin.id);
+    console.log(`[db] 已将管理员名下的 ${ownedExams} 场考试转移给教师账号`);
+  }
+
+  const nextHash = verifyPassword(LEGACY_ADMIN_PASSWORD, admin.password_hash)
+    ? hashPassword(DEFAULT_ADMIN.password)
+    : admin.password_hash;
+  run(
+    "UPDATE users SET username = ?, role = 'admin', name = ?, password_hash = ? WHERE id = ?",
+    DEFAULT_ADMIN.username,
+    DEFAULT_ADMIN.name,
+    nextHash,
+    admin.id,
+  );
+}
+
+export function ensureDefaultAdmin(): void {
+  const admin = get<AdminRow>(
+    'SELECT id, username, name, role, password_hash FROM users WHERE username = ?',
+    DEFAULT_ADMIN.username,
+  );
+
+  if (!admin) {
+    const legacy = get<AdminRow>(
+      "SELECT id, username, name, role, password_hash FROM users WHERE username = 'teacher' AND role = 'teacher'",
+    );
+    if (legacy) {
+      promoteLegacyAdmin(legacy);
+      return;
+    }
+    insertAdmin();
+    return;
+  }
+
+  if (admin.role !== 'admin') {
+    promoteLegacyAdmin(admin);
+    return;
+  }
+
+  // 防御：管理员角色不应持有考试，发现历史遗留就转给教师账号。
+  const orphanedExams =
+    get<{ c: number }>('SELECT COUNT(*) AS c FROM exams WHERE teacher_id = ?', admin.id)?.c ?? 0;
+  if (orphanedExams > 0) {
+    const teacherId = ensureLegacyTeacherFor(admin);
+    run('UPDATE exams SET teacher_id = ? WHERE teacher_id = ?', teacherId, admin.id);
+    console.log(`[db] 已将管理员名下的 ${orphanedExams} 场考试转移给教师账号`);
+  }
+
+  // 已经是独立管理员：仍把旧默认密码升级为新默认密码；管理员自己改过的密码保持不动。
+  if (verifyPassword(LEGACY_ADMIN_PASSWORD, admin.password_hash)) {
+    run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(DEFAULT_ADMIN.password), admin.id);
+  }
+}
+
 export function seed(): void {
   const classes = ensureClasses();
   assignMissingClassIds();
 
   const row = get<{ c: number }>('SELECT COUNT(*) AS c FROM users');
-  if (row && row.c > 0) return;
+  if (row && row.c > 0) {
+    ensureDefaultAdmin();
+    return;
+  }
 
   const ts = nowIso();
   run(
     'INSERT INTO users (username, password_hash, name, role, student_no, class_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    'teacher', hashPassword('123456'), '张老师', 'teacher', null, null, ts,
+    DEFAULT_ADMIN.username,
+    hashPassword(DEFAULT_ADMIN.password),
+    DEFAULT_ADMIN.name,
+    'admin',
+    null,
+    null,
+    ts,
   );
 
   STUDENT_NAMES.forEach((name, i) => {

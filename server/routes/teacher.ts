@@ -4,8 +4,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ROOT, all, get, nowIso, run, tx } from '../db.ts';
 import { HttpError, audit, loadOwnedExam, requireTeacher, type ExamRow } from '../http.ts';
-import { examSummary, loadQuestions, loadTestCases, parseJson, toQuestionTeacher } from '../serialize.ts';
-import { parseDocx } from '../import/docx.ts';
+import { examSummary, loadQuestions, loadSections, loadTestCases, parseJson, toQuestionTeacher } from '../serialize.ts';
+import { parseExamDocx, type ImportFile } from '../import/docx.ts';
 import type { GradeDetail, QuestionTeacher, SubmissionRow } from '../../shared/types.ts';
 
 const QUESTION_TYPES = ['single', 'multiple', 'truefalse', 'fill', 'short', 'code'] as const;
@@ -24,6 +24,14 @@ const testCaseSchema = z.object({
   visible: z.boolean().default(false),
 });
 
+const sectionSchema = z.object({
+  index: z.number().int().min(0),
+  key: z.string(),
+  title: z.string(),
+  score: z.number().nullable().optional(),
+  html: z.string().default(''),
+});
+
 const questionSchema = z.object({
   type: z.enum(QUESTION_TYPES),
   stemHtml: z.string(),
@@ -33,9 +41,14 @@ const questionSchema = z.object({
   explanationHtml: z.string().nullable().optional(),
   codeSpec: codeSpecSchema.nullable().optional(),
   testCases: z.array(testCaseSchema).default([]),
+  sectionIndex: z.number().int().min(0).nullable().optional(),
+  needsManual: z.boolean().optional(),
 });
 
-const questionsPayloadSchema = z.object({ questions: z.array(questionSchema).min(1) });
+const questionsPayloadSchema = z.object({
+  questions: z.array(questionSchema).min(1),
+  sections: z.array(sectionSchema).default([]),
+});
 
 function examStats(examId: number): { totalScore: number; questionCount: number } {
   const row = get<{ total: number | null; count: number }>(
@@ -53,6 +66,7 @@ function examDetail(exam: ExamRow) {
   return {
     ...examSummary(exam, examStats(exam.id)),
     questions: questions.map((q) => toQuestionTeacher(q, cases.get(q.id) ?? [])),
+    sections: loadSections(exam.sections_json),
     submissionCount,
   };
 }
@@ -98,7 +112,7 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
            JOIN answers a ON a.submission_id = s.id
            JOIN questions q ON q.id = a.question_id
           WHERE s.exam_id = e.id AND s.status = 'graded' AND a.final_score IS NULL
-            AND (q.type = 'short' OR (q.type = 'code' AND COALESCE(a.auto_score, -1) < q.score))) AS review_count
+            AND (q.needs_manual = 1 OR q.type = 'short' OR (q.type = 'code' AND COALESCE(a.auto_score, -1) < q.score))) AS review_count
        FROM exams e WHERE e.teacher_id = ? ORDER BY e.created_at DESC, e.id DESC`,
       user.id,
     );
@@ -180,35 +194,37 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  // Word 解析预览：不写库
+  // Word 解析预览：不写库。可同时上传「试卷 + 参考答案」两份 docx。
   app.post('/teacher/exams/:id/import', async (req) => {
     const user = requireTeacher(req);
     loadOwnedExam(user.id, Number((req.params as { id: string }).id));
 
-    let buffer: Buffer | null = null;
-    let filename = '';
+    const files: ImportFile[] = [];
 
     if (req.isMultipart()) {
-      const file = await req.file();
-      if (!file) throw new HttpError(400, '没有收到文件');
-      filename = file.filename ?? '';
-      if (filename && !/\.docx$/i.test(filename)) throw new HttpError(400, '只支持 .docx 格式');
-      buffer = await file.toBuffer();
+      for await (const part of req.files()) {
+        const name = part.filename ?? '';
+        if (name && !/\.docx$/i.test(name)) throw new HttpError(400, `只支持 .docx 格式：${name}`);
+        const buffer = await part.toBuffer();
+        if (!buffer.length) throw new HttpError(400, `文件为空：${name || '未命名'}`);
+        if (buffer.length > 20 * 1024 * 1024) throw new HttpError(413, `文件超过 20MB：${name}`);
+        files.push({ buffer, filename: name });
+      }
+      if (!files.length) throw new HttpError(400, '没有收到文件');
+      if (files.length > 2) throw new HttpError(400, '一次最多上传「试卷 + 参考答案」两份 .docx');
     } else {
       const body = req.body as { sample?: boolean } | undefined;
       if (body?.sample) {
         const sample = path.join(ROOT, 'templates', '题目模板.docx');
         if (!fs.existsSync(sample)) throw new HttpError(404, '示例模板不存在，请先运行 pnpm template');
-        buffer = fs.readFileSync(sample);
-        filename = '题目模板.docx';
+        files.push({ buffer: fs.readFileSync(sample), filename: '题目模板.docx' });
       }
     }
 
-    if (!buffer || buffer.length === 0) throw new HttpError(400, '文件为空');
-    if (buffer.length > 20 * 1024 * 1024) throw new HttpError(413, '文件超过 20MB');
+    if (!files.length) throw new HttpError(400, '文件为空');
 
-    const result = await parseDocx(buffer);
-    return { ...result, filename };
+    const result = await parseExamDocx(files);
+    return { ...result, filename: files.map((f) => f.filename).join(' + ') };
   });
 
   // 确认导入：整卷替换
@@ -224,11 +240,12 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
     tx(() => {
       run('DELETE FROM test_cases WHERE question_id IN (SELECT id FROM questions WHERE exam_id = ?)', exam.id);
       run('DELETE FROM questions WHERE exam_id = ?', exam.id);
+      run('UPDATE exams SET sections_json = ? WHERE id = ?', JSON.stringify(parsed.data.sections), exam.id);
 
       parsed.data.questions.forEach((q, i) => {
         const inserted = run(
-          `INSERT INTO questions (exam_id, seq, type, stem_html, score, options_json, answer_json, explanation_html, code_spec_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO questions (exam_id, seq, type, stem_html, score, options_json, answer_json, explanation_html, code_spec_json, section_index, needs_manual)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           exam.id,
           i + 1,
           q.type,
@@ -238,6 +255,8 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
           q.answer == null ? null : JSON.stringify(q.answer),
           q.explanationHtml ?? null,
           q.codeSpec ? JSON.stringify(q.codeSpec) : null,
+          q.sectionIndex ?? null,
+          q.needsManual ? 1 : 0,
         );
         q.testCases.forEach((tc, j) => {
           run(
@@ -343,7 +362,7 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       `SELECT a.submission_id, COUNT(*) AS n
        FROM answers a JOIN questions q ON q.id = a.question_id
        WHERE q.exam_id = ? AND a.final_score IS NULL
-         AND (q.type = 'short' OR (q.type = 'code' AND COALESCE(a.auto_score, -1) < q.score))
+         AND (q.needs_manual = 1 OR q.type = 'short' OR (q.type = 'code' AND COALESCE(a.auto_score, -1) < q.score))
        GROUP BY a.submission_id`,
       exam.id,
     );
@@ -383,9 +402,10 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       class_name: string | null;
       exam_title: string;
       teacher_id: number;
+      sections_json: string;
     }>(
       `SELECT s.*, u.name AS student_name, u.student_no, u.class_id, c.name AS class_name,
-        e.title AS exam_title, e.teacher_id
+        e.title AS exam_title, e.teacher_id, e.sections_json
        FROM submissions s
        JOIN users u ON u.id = s.student_id
        LEFT JOIN classes c ON c.id = u.class_id
@@ -446,6 +466,7 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       examTitle: sub.exam_title,
       examTotalScore: questions.reduce((s, q) => s + q.score, 0),
       questions: questionsDto,
+      sections: loadSections(sub.sections_json),
       answers,
       totalAutoScore: Math.round(totalAuto * 100) / 100,
     };

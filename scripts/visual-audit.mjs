@@ -1,9 +1,11 @@
-﻿// 视觉巡检：抓取各页面截图，便于系统性检查间距与排版
+// 视觉巡检：抓取各页面截图，便于系统性检查间距与排版
 // 用法：node scripts/visual-audit.mjs
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
+import { ensureDemoTeacher } from './lib/teacher-session.mjs';
 
 const BASE = 'http://127.0.0.1:8787';
+const demoTeacher = await ensureDemoTeacher(BASE);
 const OUT = 'audit';
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -26,8 +28,8 @@ async function session(width = 1440, height = 900) {
 
 async function loginTeacher(page) {
   await page.goto(`${BASE}/teacher/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[autocomplete="username"]', 'teacher');
-  await page.fill('input[type="password"]', '123456');
+  await page.fill('input[autocomplete="username"]', demoTeacher.phone);
+  await page.fill('input[type="password"]', demoTeacher.password);
   await page.click('button[type="submit"]');
 }
 

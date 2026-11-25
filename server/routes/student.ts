@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, get, nowIso, run } from '../db.ts';
 import { HttpError, requireStudent } from '../http.ts';
-import { examSummary, loadQuestions, loadTestCases, parseJson, type ExamRow } from '../serialize.ts';
+import { examSummary, loadQuestions, loadSections, loadTestCases, parseJson, type ExamRow } from '../serialize.ts';
 import { enqueueGrading } from '../grading/worker.ts';
 import type { AnswerSpec, QuestionStudent, StudentAnswer } from '../../shared/types.ts';
 
@@ -135,6 +135,7 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
             expectedStdout: c.expectedStdout,
             label: c.score <= 0 ? '样例' : '公开测试点',
           })),
+        sectionIndex: q.section_index ?? null,
       };
     });
 
@@ -154,6 +155,7 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
         deadlineAt: deadlineOf(exam, sub.started_at),
       },
       questions: dto,
+      sections: loadSections(exam.sections_json),
       answers,
     };
   });
@@ -256,6 +258,7 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
         answer: parseJson<AnswerSpec | null>(q.answer_json, null),
         explanationHtml: q.explanation_html,
         raw: row ? parseJson<StudentAnswer | null>(row.raw_json, null) : null,
+        sectionIndex: q.section_index ?? null,
       };
     });
 
@@ -268,6 +271,7 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
       score: Math.round(sum * 100) / 100,
       totalScore,
       questions: items,
+      sections: loadSections(exam.sections_json),
     };
   });
 }

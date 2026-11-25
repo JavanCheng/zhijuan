@@ -4,6 +4,7 @@ import type {
   CodeSpec,
   ExamSummary,
   Option,
+  QuestionSection,
   QuestionStudent,
   QuestionTeacher,
   QuestionType,
@@ -21,6 +22,8 @@ export interface QuestionRow {
   answer_json: string | null;
   explanation_html: string | null;
   code_spec_json: string | null;
+  section_index: number | null;
+  needs_manual: number;
 }
 
 export interface TestCaseRow {
@@ -43,6 +46,7 @@ export interface ExamRow {
   start_at: string | null;
   end_at: string | null;
   results_published: number;
+  sections_json: string;
   created_at: string;
 }
 
@@ -83,6 +87,13 @@ export function loadQuestions(examId: number): QuestionRow[] {
   return all<QuestionRow>('SELECT * FROM questions WHERE exam_id = ? ORDER BY seq, id', examId);
 }
 
+/** 大题（材料题）分组信息，随考试一起保存，题目只用 section_index 引用。 */
+export function loadSections(sectionsJson: string | null | undefined): QuestionSection[] {
+  return parseJson<QuestionSection[]>(sectionsJson, []).filter(
+    (s) => s && typeof s.index === 'number' && typeof s.title === 'string',
+  );
+}
+
 export function toQuestionTeacher(q: QuestionRow, cases: TestCase[]): QuestionTeacher {
   return {
     id: q.id,
@@ -95,6 +106,8 @@ export function toQuestionTeacher(q: QuestionRow, cases: TestCase[]): QuestionTe
     explanationHtml: q.explanation_html,
     codeSpec: parseJson<CodeSpec | null>(q.code_spec_json, null),
     testCases: cases,
+    sectionIndex: q.section_index ?? null,
+    needsManual: !!q.needs_manual,
   };
 }
 
@@ -119,6 +132,7 @@ export function toQuestionStudent(q: QuestionRow, cases: TestCase[]): QuestionSt
         expectedStdout: c.expectedStdout,
         label: c.score <= 0 ? '样例' : '公开测试点',
       })),
+    sectionIndex: q.section_index ?? null,
   };
 }
 

@@ -26,7 +26,7 @@ import {
 } from '@ant-design/icons';
 import { api, del, patch, post, put } from '../../api';
 import type { ExamDetailTeacher, ImportResult, QuestionTeacher } from '../../../shared/types';
-import { ExamStatusTag, Page, PageHeader, Pill, TypeTag } from '../../ui';
+import { ExamStatusTag, Page, PageHeader, Pill, SectionMaterial, SectionTag, TypeTag } from '../../ui';
 import { formatAnswerSpec, scoreText, stripHtml } from '../../format';
 
 const { Text } = Typography;
@@ -62,6 +62,8 @@ export function TeacherExam() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // 已选文件（试卷 + 参考答案）；用原始 File 作为唯一数据源，避免依赖 antd 的 originFileObj
+  const [picked, setPicked] = useState<File[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -94,21 +96,33 @@ export function TeacherExam() {
     }
   }
 
+  // 先本地收集文件（试卷 + 参考答案），点「解析并预览」再统一提交
   const uploadProps: UploadProps = {
     accept: '.docx',
-    showUploadList: false,
+    multiple: true,
+    fileList: picked.map((file, i) => ({
+      uid: `${i}-${file.name}-${file.size}`,
+      name: file.name,
+      size: file.size,
+      status: 'done' as const,
+    })),
     disabled: importing || (exam?.submissionCount ?? 0) > 0,
-    customRequest: async ({ file, onSuccess, onError }) => {
-      const form = new FormData();
-      form.append('file', file as File);
-      try {
-        await runImport(form);
-        onSuccess?.({});
-      } catch (err) {
-        onError?.(err as Error);
-      }
+    beforeUpload: (file) => {
+      setPicked((prev) => [...prev.filter((item) => item.name !== file.name), file as File].slice(-2));
+      return false;
     },
+    onRemove: (file) => {
+      setPicked((prev) => prev.filter((item) => item.name !== file.name));
+    },
+    showUploadList: { showPreviewIcon: false },
   };
+
+  async function startImport() {
+    if (!picked.length) return;
+    const form = new FormData();
+    for (const file of picked) form.append('file', file, file.name);
+    await runImport(form);
+  }
 
   async function confirmImport() {
     if (!importResult || !exam) return;
@@ -116,9 +130,11 @@ export function TeacherExam() {
     try {
       await put(`/api/teacher/exams/${exam.id}/questions`, {
         questions: importResult.questions as unknown as Record<string, unknown>[],
+        sections: importResult.sections as unknown as Record<string, unknown>[],
       });
       setImportOpen(false);
       setImportResult(null);
+      setPicked([]);
       setNotice('题目已导入，请核对分值后发布考试');
       await load();
     } catch (err) {
@@ -132,7 +148,7 @@ export function TeacherExam() {
     setBusy(true);
     try {
       await post(`/api/teacher/exams/${examId}/publish`);
-      setNotice('考试已发布，学生端现在可以看到并作答');
+      setNotice('考试已发布，学生工作台现在可以看到并作答');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : '发布失败');
@@ -206,6 +222,11 @@ export function TeacherExam() {
   const hasQuestions = exam.questions.length > 0;
   const locked = exam.submissionCount > 0;
   const errorCount = importResult?.counts.errors ?? 0;
+  // 每个大题的第一题（用于预览里只展示一次材料）
+  const sectionFirstSeq = new Map<number, number>();
+  for (const q of importResult?.questions ?? []) {
+    if (q.sectionIndex != null && !sectionFirstSeq.has(q.sectionIndex)) sectionFirstSeq.set(q.sectionIndex, q.seq);
+  }
 
   let stepCurrent = 0;
   if (hasQuestions) stepCurrent = 1;
@@ -214,6 +235,14 @@ export function TeacherExam() {
 
   const columns: TableProps<QuestionTeacher>['columns'] = [
     { title: '题号', dataIndex: 'seq', width: 64 },
+    {
+      title: '大题',
+      width: 104,
+      render: (_, q) => {
+        const section = q.sectionIndex != null ? exam.sections[q.sectionIndex] : undefined;
+        return section ? <SectionTag section={section} /> : <span className="text-[12px] text-[#98a1b3]">—</span>;
+      },
+    },
     { title: '题型', dataIndex: 'type', width: 88, render: (_, q) => <TypeTag type={q.type} /> },
     {
       title: '题干',
@@ -325,7 +354,8 @@ export function TeacherExam() {
         }
       >
         <p className="mb-4 text-[12.5px] leading-6 text-[#7b86a0]">
-          按模板填写后上传，系统会先给出解析预览，确认无误再写入试卷。
+          一次可上传两份 docx：<strong>试卷</strong> + <strong>参考答案</strong>（文件名含「答案/参考」的会被识别为参考答案）。
+          系统先给出解析预览，确认无误再写入试卷。
           {locked ? ' 当前已有学生提交，题目与分值已锁定，不能重新导入。' : ''}
         </p>
 
@@ -333,17 +363,22 @@ export function TeacherExam() {
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
-          <p className="ant-upload-text">{importing ? '正在解析…' : locked ? '已有学生提交，暂不可重新导入' : '把 .docx 拖到这里，或点击选择文件'}</p>
+          <p className="ant-upload-text">
+            {importing ? '正在解析…' : locked ? '已有学生提交，暂不可重新导入' : '把试卷和参考答案拖到这里，或点击选择文件'}
+          </p>
           <p className="ant-upload-hint">
             {locked
               ? '如需修改题目，请先删除学生提交记录（当前版本未开放）或新建一场考试。'
               : hasQuestions
                 ? '重新导入会覆盖当前全部题目；已产生学生提交后不可再导入。'
-                : '支持单选、多选、判断、填空、简答、代码六种题型。'}
+                : '支持两种格式：① 真实试卷（综合题材料 + 题干末尾「（单选题，2分）」+ 独立参考答案）；② 模板格式（【题型】标记）。'}
           </p>
         </Upload.Dragger>
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button type="primary" size="small" loading={importing} disabled={locked || !picked.length} onClick={() => void startImport()}>
+            解析并预览{picked.length ? `（${picked.length} 个文件）` : ''}
+          </Button>
           <Button size="small" loading={importing} disabled={locked} onClick={() => runImport({ sample: true })}>
             使用示例模板试导入
           </Button>
@@ -355,6 +390,7 @@ export function TeacherExam() {
         title="题目列表"
         extra={
           <Space size={8}>
+            {exam.sections.length ? <Tag bordered={false} color="geekblue">{exam.sections.length} 道大题</Tag> : null}
             <Tag bordered={false}>{exam.questions.length} 题</Tag>
             <Tag bordered={false} color="blue">
               合计 {scoreText(exam.totalScore)} 分
@@ -370,7 +406,7 @@ export function TeacherExam() {
             columns={columns}
             dataSource={exam.questions}
             pagination={false}
-            scroll={{ x: 820 }}
+            scroll={{ x: 940 }}
           />
         ) : (
           <Empty description="试卷还没有题目，上传 Word 或使用示例模板试导入" />
@@ -395,6 +431,7 @@ export function TeacherExam() {
         {importResult ? (
           <>
             <Space size={8} wrap className="mb-3">
+              {importResult.sections.length ? <Pill tone="purple">{importResult.sections.length} 道大题</Pill> : null}
               <Pill tone="blue">{importResult.counts.total} 题</Pill>
               <Pill tone="green">{importResult.counts.totalScore} 分</Pill>
               {importResult.counts.errors > 0 ? <Pill tone="red">{importResult.counts.errors} 个错误</Pill> : null}
@@ -408,34 +445,40 @@ export function TeacherExam() {
             <div className="pr-1">
               {importResult.questions.map((q) => {
                 const hardError = q.issues.some((i) => i.level === 'error');
+                const section = q.sectionIndex != null ? importResult.sections[q.sectionIndex] : undefined;
+                const showSection = Boolean(section) && sectionFirstSeq.get(q.sectionIndex!) === q.seq;
                 return (
-                  <div
-                    key={q.seq}
-                    className={`mb-3 rounded-xl border p-3.5 ${hardError ? 'border-[#f3c4c4] bg-[#fffafa]' : 'border-[#e4e8f2]'}`}
-                  >
-                    <Space size={8} wrap className="mb-2">
-                      <Tag>第 {q.seq} 题</Tag>
-                      <TypeTag type={q.type} />
-                      <Tag color="blue">{q.score} 分</Tag>
-                      {q.type === 'code' ? <Tag color="purple">{q.testCases.length} 个测试点</Tag> : null}
-                    </Space>
-                    <div className="whitespace-pre-wrap text-[13.5px] leading-7 text-[#39445c]">
-                      {stripHtml(q.stemHtml).slice(0, 220)}
-                    </div>
-                    <div className="mt-2 text-[12px] text-[#7b86a0]">
-                      {q.type === 'code'
-                        ? `语言：${q.codeSpec?.languages.join(', ') ?? 'python'}`
-                        : `答案：${formatAnswerSpec(q.type, q.answer, q.options).replace(/\n/g, '；').slice(0, 90)}`}
-                    </div>
-                    {q.issues.length ? (
-                      <Space direction="vertical" size={4} className="mt-2">
-                        {q.issues.map((issue, idx) => (
-                          <Tag key={idx} color={issue.level === 'error' ? 'red' : 'gold'}>
-                            {issue.level === 'error' ? '错误' : '提示'}：{issue.message}
-                          </Tag>
-                        ))}
+                  <div key={q.seq}>
+                    {showSection && section ? <SectionMaterial section={section} defaultOpen={false} /> : null}
+                    <div
+                      className={`mb-3 rounded-xl border p-3.5 ${hardError ? 'border-[#f3c4c4] bg-[#fffafa]' : 'border-[#e4e8f2]'}`}
+                    >
+                      <Space size={8} wrap className="mb-2">
+                        <Tag>第 {q.seq} 题</Tag>
+                        {section ? <Tag color="geekblue">{section.title}</Tag> : null}
+                        <TypeTag type={q.type} />
+                        <Tag color="blue">{q.score} 分</Tag>
+                        {q.needsManual ? <Tag color="gold">需人工评分</Tag> : null}
+                        {q.type === 'code' ? <Tag color="purple">{q.testCases.length} 个测试点</Tag> : null}
                       </Space>
-                    ) : null}
+                      <div className="whitespace-pre-wrap text-[13.5px] leading-7 text-[#39445c]">
+                        {stripHtml(q.stemHtml).slice(0, 220)}
+                      </div>
+                      <div className="mt-2 whitespace-pre-wrap text-[12px] text-[#7b86a0]">
+                        {q.type === 'code'
+                          ? `语言：${q.codeSpec?.languages.join(', ') ?? 'python'}`
+                          : `答案：${formatAnswerSpec(q.type, q.answer, q.options).slice(0, 160)}`}
+                      </div>
+                      {q.issues.length ? (
+                        <Space direction="vertical" size={4} className="mt-2">
+                          {q.issues.map((issue, idx) => (
+                            <Tag key={idx} color={issue.level === 'error' ? 'red' : 'gold'}>
+                              {issue.level === 'error' ? '错误' : '提示'}：{issue.message}
+                            </Tag>
+                          ))}
+                        </Space>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })}

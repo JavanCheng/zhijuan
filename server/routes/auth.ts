@@ -1,11 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import type { Role } from '../../shared/types.ts';
 import { get } from '../db.ts';
 import { verifyPassword } from '../password.ts';
 import { currentUser, type SessionUser } from '../auth.ts';
 import { HttpError } from '../http.ts';
 
-const teacherLoginSchema = z.object({
+const accountLoginSchema = z.object({
   username: z.string().trim().min(1).max(80),
   password: z.string().min(1).max(200),
 });
@@ -20,7 +21,8 @@ interface UserRow {
   username: string;
   password_hash: string;
   name: string;
-  role: 'teacher' | 'student';
+  role: Role;
+  phone: string | null;
   student_no: string | null;
   class_id: number | null;
   class_name: string | null;
@@ -43,6 +45,7 @@ function toDto(row: UserRow): SessionUser {
     username: row.username,
     name: row.name,
     role: row.role,
+    phone: row.phone,
     studentNo: row.student_no,
     classId: row.class_id,
     className: row.class_name,
@@ -50,20 +53,42 @@ function toDto(row: UserRow): SessionUser {
   };
 }
 
-async function teacherLogin(req: FastifyRequest, reply: FastifyReply) {
-  const parsed = teacherLoginSchema.safeParse(req.body);
-  if (!parsed.success) throw new HttpError(400, '请输入教师账号和密码');
+async function adminLogin(req: FastifyRequest, reply: FastifyReply) {
+  const parsed = accountLoginSchema.safeParse(req.body);
+  if (!parsed.success) throw new HttpError(400, '请输入管理员账号和密码');
 
   const row = get<UserRow>(
     `SELECT u.*, c.name AS class_name FROM users u
      LEFT JOIN classes c ON c.id = u.class_id
-     WHERE u.username = ? AND u.role = 'teacher'`,
+     WHERE u.username = ? AND u.role = 'admin'`,
     parsed.data.username,
+  );
+  if (!row || !verifyPassword(parsed.data.password, row.password_hash)) {
+    throw new HttpError(401, '管理员账号或密码错误');
+  }
+  if (!row.is_active) throw new HttpError(403, '管理员账号已停用');
+
+  setSession(reply, row.id);
+  return { user: toDto(row) };
+}
+
+async function teacherLogin(req: FastifyRequest, reply: FastifyReply) {
+  const parsed = accountLoginSchema.safeParse(req.body);
+  if (!parsed.success) throw new HttpError(400, '请输入教师账号和密码');
+
+  const account = parsed.data.username;
+  const row = get<UserRow>(
+    `SELECT u.*, c.name AS class_name FROM users u
+     LEFT JOIN classes c ON c.id = u.class_id
+     WHERE u.role = 'teacher' AND (u.username = ? OR u.phone = ?)
+     LIMIT 1`,
+    account,
+    account,
   );
   if (!row || !verifyPassword(parsed.data.password, row.password_hash)) {
     throw new HttpError(401, '教师账号或密码错误');
   }
-  if (!row.is_active) throw new HttpError(403, '该教师账号已停用');
+  if (!row.is_active) throw new HttpError(403, '该教师账号已停用，请联系管理员');
 
   setSession(reply, row.id);
   return { user: toDto(row) };
@@ -95,6 +120,7 @@ async function studentLogin(req: FastifyRequest, reply: FastifyReply) {
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   // /auth/login 保留为教师登录别名，避免旧脚本失效
   app.post('/auth/login', teacherLogin);
+  app.post('/auth/admin/login', adminLogin);
   app.post('/auth/teacher/login', teacherLogin);
   app.post('/auth/student/login', studentLogin);
 
@@ -111,7 +137,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/auth/runtime', async (req) => {
     const user = currentUser(req);
-    if (!user || user.role !== 'teacher') throw new HttpError(403, '仅教师可查看');
+    if (!user || (user.role !== 'teacher' && user.role !== 'admin')) {
+      throw new HttpError(403, '仅教师或管理员可查看');
+    }
     const { runtimeStatus } = await import('../runner/run.ts');
     return runtimeStatus();
   });
