@@ -92,6 +92,18 @@ try {
   browser = await chromium.launch({ channel: 'msedge' });
   console.log(`Microsoft Edge ${browser.version()} · Vite + 隔离 API 样本`);
 
+  async function checkMessageStyle(page, type, background) {
+    const notice = page.locator(`.ant-message-notice-${type}`);
+    await notice.waitFor();
+    assert.equal(await getCss(notice, 'background-color'), background);
+    assert.equal(await getCss(notice, 'border-top-width'), '1px');
+    assert.equal(await getCss(notice, 'border-top-style'), 'solid');
+    assert.equal(await getCss(notice, 'border-radius'), '8px');
+    assert.equal(await getCss(notice, 'box-shadow'), 'none');
+    assert.notEqual(await getCss(notice.locator('.ant-message-notice-icon'), 'color'), await getCss(notice.locator('.ant-message-notice-title'), 'color'));
+    return notice;
+  }
+
   await check('登录失败走全局 Message，界面不再展示字体声明', async (page, base) => {
     await page.route('**/api/auth/teacher/login', (route) => route.fulfill({
       status: 401, json: { error: '测试账号或密码不正确' },
@@ -101,9 +113,29 @@ try {
     await page.getByPlaceholder('请输入密码').fill('invalid');
     await page.getByRole('button', { name: '进入教师工作台' }).click();
     await page.locator('.ant-message-error').getByText('测试账号或密码不正确').waitFor();
+    await checkMessageStyle(page, 'error', 'rgb(255, 241, 240)');
     assert.equal(await page.locator('.login-form .ant-alert, a[href="/fonts/NOTICE.md"]').count(), 0);
     assert.equal(await page.getByPlaceholder('请输入账号').inputValue(), 'fixture');
   });
+
+  await check('深色 Message 状态底色和窄屏长文案', async (page, base) => {
+    const error = '请求未完成：' + 'LongUnbrokenError'.repeat(18);
+    await page.route('**/api/auth/teacher/login', (route) => route.fulfill({ status: 400, json: { error } }));
+    await page.goto(`${base}/teacher/login`);
+    await page.getByPlaceholder('请输入账号').fill('fixture');
+    await page.getByPlaceholder('请输入密码').fill('invalid');
+    await page.getByRole('button', { name: '进入教师工作台' }).click();
+    const notice = await checkMessageStyle(page, 'error', 'rgb(80, 43, 42)');
+    const rect = await notice.boundingBox();
+    assert.ok(rect && rect.x >= 0 && rect.x + rect.width <= 320 && rect.height > 44);
+    await noHorizontalOverflow(page);
+  }, { colorScheme: 'dark', viewport: { width: 320, height: 800 } });
+
+  await check('运行时警告使用同款 Message 样式', async (page, base) => {
+    await page.route('**/api/auth/runtime', (route) => route.fulfill({ json: { python: null } }));
+    await page.goto(`${base}/teacher`);
+    await checkMessageStyle(page, 'warning', 'rgb(255, 248, 235)');
+  }, { signedIn: true });
 
   await check('浅/深色实际页面与控件；外观保存、刷新及跟随系统', async (page, base) => {
     await page.goto(`${base}/login`);
@@ -310,6 +342,7 @@ try {
     await dialog.getByRole('textbox').fill('测试班级');
     await dialog.getByRole('button', { name: /^创\s*建$/ }).click();
     await page.locator('.ant-message-success').getByText('班级已创建').waitFor();
+    await checkMessageStyle(page, 'success', 'rgb(232, 255, 245)');
     await dialog.waitFor({ state: 'hidden' });
   }, { signedIn: true });
 

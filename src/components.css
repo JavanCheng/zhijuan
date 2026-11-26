@@ -46,6 +46,49 @@
 .ant-avatar.shell-avatar { font-size: 13px; background: var(--ui-background-muted); color: var(--ui-content-primary); }
 .ui-content-skeleton { min-width: 0; }
 
+/* Treat each Message as a compact Alert: tinted surface, fine border, no shadow. */
+.ant-message .ant-message-notice {
+  --ui-message-bg: var(--ui-surface-default);
+  --ui-message-accent: var(--ui-border-strong);
+  --ui-message-text: var(--ui-content-primary);
+  max-width: min(32rem, calc(100vw - 2rem));
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--ui-message-accent) 46%, var(--ui-message-bg));
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-message-bg);
+  box-shadow: none;
+}
+.ant-message .ant-message-notice.ant-message-notice-error {
+  --ui-message-bg: var(--ui-status-danger-bg);
+  --ui-message-accent: var(--ui-status-danger-accent);
+  --ui-message-text: var(--ui-status-danger-text);
+}
+.ant-message .ant-message-notice.ant-message-notice-success {
+  --ui-message-bg: var(--ui-status-success-bg);
+  --ui-message-accent: var(--ui-status-success-accent);
+  --ui-message-text: var(--ui-status-success-text);
+}
+.ant-message .ant-message-notice.ant-message-notice-warning {
+  --ui-message-bg: var(--ui-status-warning-bg);
+  --ui-message-accent: var(--ui-status-warning-accent);
+  --ui-message-text: var(--ui-status-warning-text);
+}
+.ant-message .ant-message-notice:is(.ant-message-notice-info, .ant-message-notice-loading) {
+  --ui-message-bg: var(--ui-status-info-bg);
+  --ui-message-accent: var(--ui-status-info-accent);
+  --ui-message-text: var(--ui-status-info-text);
+}
+.ant-message .ant-message-notice .ant-message-notice-wrapper { align-items: flex-start; }
+.ant-message .ant-message-notice .ant-message-notice-icon {
+  margin-block-start: 3px;
+  color: color-mix(in srgb, var(--ui-message-text) 64%, var(--ui-content-primary));
+}
+.ant-message .ant-message-notice .ant-message-notice-title {
+  min-width: 0;
+  color: var(--ui-content-primary);
+  overflow-wrap: anywhere;
+}
+
 @media (forced-colors: active) {
   :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible,
   .ant-btn.ant-btn:focus-visible, .ant-btn.ant-btn-variant-solid:focus-visible,
