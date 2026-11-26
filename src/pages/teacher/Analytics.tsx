@@ -46,6 +46,7 @@ import {
 import { scoreText } from '../../format';
 import { CHART_COLORS, Chart, axisLabel, chartTooltip, splitLine } from '../../charts/Chart';
 import { StudentProfileDrawer } from './StudentProfileDrawer';
+import { filteredAnalyticsCsv } from './analytics-csv';
 
 const { Text } = Typography;
 
@@ -68,11 +69,6 @@ function rateColor(rate: number, kind: 'accent' | 'text' = 'accent'): string {
 
 function rankBadge(rank: number) {
   return <span className={`rank-badge ${rank <= 3 ? 'is-top' : ''}`}>{rank}</span>;
-}
-
-function csvCell(value: string | number): string {
-  const text = String(value ?? '');
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function buildInsights(data: AnalyticsPayload): Array<{ icon: ReactNode; text: string }> {
@@ -111,7 +107,7 @@ function buildInsights(data: AnalyticsPayload): Array<{ icon: ReactNode; text: s
   } else if (data.kpi.submitRate < 100) {
     items.push({
       icon: <TeamOutlined />,
-      text: `当前提交率 ${data.kpi.submitRate}%，还有 ${Math.max(0, data.kpi.expected - data.kpi.participants)} 人未提交，统计结果会随后续提交变化。`,
+      text: `当前有 ${data.kpi.participants} 人纳入统计，尚未评分的答卷不会计入这些图表。`,
     });
   }
 
@@ -132,6 +128,7 @@ export function TeacherAnalytics() {
 
   const [meta, setMeta] = useState<AnalyticsMeta | null>(null);
   const [data, setData] = useState<AnalyticsPayload | null>(null);
+  const [dataQuery, setDataQuery] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [metaFailed, setMetaFailed] = useState(false);
   const [dataFailed, setDataFailed] = useState(false);
@@ -172,6 +169,7 @@ export function TeacherAnalytics() {
       .then((result) => {
         if (!alive) return;
         setData(result);
+        setDataQuery(queryString);
         setDataFailed(false);
         if (!searchParams.get('examId')) {
           const next = new URLSearchParams(searchParams);
@@ -662,29 +660,18 @@ export function TeacherAnalytics() {
   const excellentCount = data ? Math.round((data.kpi.excellentRate / 100) * data.kpi.participants) : 0;
   const avgScoreRate = data ? percent(data.kpi.avg, data.exam.totalScore) : 0;
 
+  const canExport = Boolean(data?.students.length && !loading && !dataFailed && dataQuery === queryString);
+
   function exportCsv() {
-    if (!data) return;
-    const header = ['班级', '学号', '姓名', '得分', '满分', '得分率(%)', '总排名', '班级排名', '作答数', '待校准'];
-    const rows = data.students.map((student) => [
-      student.className ?? '未分班',
-      student.studentNo,
-      student.name,
-      student.score,
-      student.totalScore,
-      percent(student.score, student.totalScore),
-      student.rank,
-      `${student.classRank}/${student.classSize}`,
-      `${student.answered}/${student.questionCount}`,
-      student.needsReview,
-    ]);
-    const csv = `\uFEFF${[header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
+    if (!data || !canExport) return;
+    const csv = filteredAnalyticsCsv(data);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `${data.exam.title}-学情数据.csv`;
     link.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   const studentColumns: TableProps<StudentAnalytics>['columns'] = [
@@ -915,8 +902,8 @@ export function TeacherAnalytics() {
             <Button icon={<TeamOutlined />} onClick={() => navigate('/teacher/classes')}>
               班级管理
             </Button>
-            <Button icon={<DownloadOutlined />} disabled={!data} onClick={exportCsv}>
-              导出成绩
+            <Button icon={<DownloadOutlined />} disabled={!canExport} onClick={exportCsv}>
+              导出筛选成绩
             </Button>
           </>
         }
@@ -1037,14 +1024,21 @@ export function TeacherAnalytics() {
             />
           </div>
 
-          <div className="insight-strip mb-5">
+          {data.kpi.participants > 0 ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <strong className="text-[14px] text-ui-primary">讲评建议</strong>
+              <Pill tone={data.exam.resultsPublished ? 'green' : 'amber'}>{data.exam.resultsPublished ? '成绩已发布' : '成绩未发布，数据可能变化'}</Pill>
+              <Button type="link" size="small" onClick={() => setTab('questions')}>查看逐题分析</Button>
+            </div>
+          ) : null}
+          {data.kpi.participants > 0 ? <div className="insight-strip mb-5">
             {insights.map((item, index) => (
               <div className="insight-item [overflow-wrap:anywhere]" key={index}>
                 <span className="insight-icon">{item.icon}</span>
                 <span>{item.text}</span>
               </div>
             ))}
-          </div>
+          </div> : null}
 
           <Tabs
             activeKey={tab}

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { chromium } from 'playwright-core';
 import { ensureDemoTeacher } from './lib/teacher-session.mjs';
 
-const BASE = 'http://127.0.0.1:8787';
+const BASE = (process.env.ZHIJUAN_BASE ?? 'http://127.0.0.1:8787').replace(/\/$/, '');
 const demoTeacher = await ensureDemoTeacher(BASE);
 const SHOTS = 'shots';
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -120,7 +120,7 @@ console.log('  提交完成');
 
 // ── 教师批改并发布 ──────────────────────────────────────
 await teacher.goto(gradingUrl, { waitUntil: 'networkidle' });
-await teacher.waitForSelector('table tbody tr');
+await teacher.waitForSelector('table tbody tr.ant-table-row');
 await teacher.waitForTimeout(1200);
 await shot(teacher, '09-teacher-grading-list', true);
 
@@ -137,6 +137,9 @@ await shot(teacher, '10b-teacher-review-graded', true);
 console.log('  人工改分 OK');
 
 await teacher.goto(gradingUrl, { waitUntil: 'networkidle' });
+const closeResponse = await teacher.request.post(`${gradingUrl.replace(/\/grading$/, '').replace('/teacher/exam/', '/api/teacher/exams/')}/close`, { data: { action: 'collect' } });
+if (!closeResponse.ok()) throw new Error(`结束考试失败 (${closeResponse.status()}): ${await closeResponse.text()}`);
+await teacher.reload({ waitUntil: 'networkidle' });
 await teacher.click('button:has-text("发布成绩")');
 await teacher.locator('.ant-modal .ant-btn-primary').click();
 await teacher.waitForTimeout(1200);

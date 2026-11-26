@@ -110,7 +110,7 @@ try {
   check('模板格式仍解析 6 题 / 100 分', legacy.counts.total === 6 && legacy.counts.totalScore === 100, `${legacy.counts.total} 题 / ${legacy.counts.totalScore} 分`);
   check('模板格式没有大题', legacy.sections.length === 0);
 
-  await call('POST', `/teacher/exams/${exam.id}/publish`);
+  await call('POST', `/teacher/exams/${exam.id}/publish`, { audience: { type: 'school' } });
 
   console.log('\n▶ 学生作答 + 自动判分');
   cookie = '';
@@ -170,6 +170,15 @@ try {
   check('编程题标记需人工', sub.answers.find((a) => a.questionId === bySeq.get(32).id)?.autoDetail?.needsManual === true);
 
   console.log('\n▶ 学生成绩页');
+  await call('POST', `/teacher/exams/${exam.id}/close`, { action: 'collect' });
+  const pending = (await call('GET', `/teacher/exams/${exam.id}/submissions`)).find((row) => row.id === page.submission.id);
+  for (const answer of sub.answers) {
+    const question = sub.questions.find((q) => q.id === answer.questionId);
+    if (answer.finalScore == null && (question.needsManual || question.type === 'short' || answer.autoScore == null || answer.autoDetail?.needsManual || answer.autoDetail?.runtimeError || (question.type === 'code' && answer.autoScore < question.score))) {
+      await call('PATCH', `/teacher/answers/${answer.id}`, { finalScore: answer.autoScore ?? 0 });
+    }
+  }
+  check('人工复核已清空', pending?.needsReview > 0 && (await call('GET', `/teacher/exams/${exam.id}`)).progress.needsReview === 0);
   // 教师端发布成绩后再以学生身份查看
   await call('POST', `/teacher/exams/${exam.id}/publish-results`, { published: true });
   cookie = '';

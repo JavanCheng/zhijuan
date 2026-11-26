@@ -48,6 +48,6 @@ $imp = Api 'Post' "/api/teacher/exams/$($exam.id)/import" @{ sample = $true } $t
 if ($imp.counts.errors -gt 0) { throw "示例模板解析出现 $($imp.counts.errors) 个错误" }
 
 Api 'Put' "/api/teacher/exams/$($exam.id)/questions" @{ questions = @($imp.questions) } $tea | Out-Null
-Api 'Post' "/api/teacher/exams/$($exam.id)/publish" @{} $tea | Out-Null
+Api 'Post' "/api/teacher/exams/$($exam.id)/publish" @{ audience = @{ type = 'school' } } $tea | Out-Null
 
 Write-Host "示例考试已创建并发布：examId=$($exam.id)，$($imp.counts.total) 题 / $($imp.counts.totalScore) 分" -ForegroundColor Green

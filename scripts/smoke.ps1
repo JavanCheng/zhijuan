@@ -58,7 +58,7 @@ $imp.questions | ForEach-Object { Write-Host "   #$($_.seq) [$($_.type)] $($_.sc
 Step '4. 写入试卷并发布'
 $detail = Api 'Put' "/api/teacher/exams/$($exam.id)/questions" @{ questions = @($imp.questions) } $tea
 Write-Host "   已保存 $($detail.questions.Count) 题，总分 $($detail.totalScore)"
-Api 'Post' "/api/teacher/exams/$($exam.id)/publish" @{} $tea | Out-Null
+Api 'Post' "/api/teacher/exams/$($exam.id)/publish" @{ audience = @{ type = 'school' } } $tea | Out-Null
 Write-Host '   考试已发布'
 
 Step '5. 学生登录并获取试卷'
@@ -113,16 +113,7 @@ $shortA = $sub.answers | Where-Object { $_.questionId -eq $shortQ.id }
 $graded = Api 'Patch' "/api/teacher/answers/$($shortA.id)" @{ finalScore = 18; comment = '要点齐全，表述可再精简' } $tea
 Write-Host "   校准后本卷最终分：$($graded.submissionFinalScore)"
 
-Step '10. 确认自动分并发布成绩'
-Api 'Post' "/api/teacher/exams/$($exam.id)/confirm-auto" @{} $tea | Out-Null
-Api 'Post' "/api/teacher/exams/$($exam.id)/publish-results" @{ published = $true } $tea | Out-Null
-
-Step '11. 学生查看成绩'
-$result = Api 'Get' "/api/student/submissions/$($page.submission.id)" $null $stuSession
-Write-Host "   学生得分：$($result.score) / $($result.totalScore)（发布状态：$($result.resultsPublished)）"
-$result.questions | ForEach-Object { Write-Host ("   #{0} [{1}] {2}/{3}" -f $_.seq, $_.type, $_.finalScore, $_.score) }
-
-Step '12. 第二个学生故意答错，验证判错与证据链'
+Step '10. 第二个学生故意答错，验证判错与证据链'
 $stu2 = Invoke-RestMethod -Uri "$base/api/auth/student/login" -Method Post -ContentType $jsonType -Body (ToBytes @{ name = '王梓萱'; studentNo = '20250302' }) -SessionVariable stu2Session
 $page2 = Api 'Get' "/api/student/exams/$($exam.id)" $null $stu2Session
 $wrong = @{}
@@ -152,6 +143,26 @@ $failed = @($codeA.autoDetail.items | Where-Object { -not $_.ok }).Count
 Write-Host "   代码题：$failed / $($codeA.autoDetail.items.Count) 个测试点判错"
 if ($sub2.totalAutoScore -ne 5) { throw "错误答卷自动分异常：$($sub2.totalAutoScore)" }
 if ($failed -ne $codeA.autoDetail.items.Count) { throw '代码题错误未被识别' }
+
+Step '11. 结束考试，完成复核并发布成绩'
+Api 'Post' "/api/teacher/exams/$($exam.id)/close" @{ action = 'collect' } $tea | Out-Null
+foreach ($sheet in @($sub, $sub2)) {
+  foreach ($a in $sheet.answers) {
+    $q = $sheet.questions | Where-Object { $_.id -eq $a.questionId }
+    if ($null -eq $a.finalScore -and ($q.needsManual -or $q.type -eq 'short' -or $null -eq $a.autoScore -or $a.autoDetail.needsManual -or $a.autoDetail.runtimeError -or ($q.type -eq 'code' -and $a.autoScore -lt $q.score))) {
+      $score = if ($sheet.id -eq $sub.id -and $q.type -eq 'short') { 18 } elseif ($null -eq $a.autoScore) { 0 } else { $a.autoScore }
+      Api 'Patch' "/api/teacher/answers/$($a.id)" @{ finalScore = $score } $tea | Out-Null
+    }
+  }
+}
+Api 'Post' "/api/teacher/exams/$($exam.id)/confirm-auto" @{} $tea | Out-Null
+Api 'Post' "/api/teacher/exams/$($exam.id)/publish-results" @{ published = $true } $tea | Out-Null
+
+Step '12. 学生查看成绩'
+$result = Api 'Get' "/api/student/submissions/$($page.submission.id)" $null $stuSession
+if (-not $result.resultsPublished) { throw '学生未能查看已发布成绩' }
+Write-Host "   学生得分：$($result.score) / $($result.totalScore)"
+$result.questions | ForEach-Object { Write-Host ("   #{0} [{1}] {2}/{3}" -f $_.seq, $_.type, $_.finalScore, $_.score) }
 
 Step '13. 学情看板：班级维度、筛选与学生画像'
 $meta = Api 'Get' '/api/teacher/analytics/meta' $null $tea

@@ -6,7 +6,9 @@ import { ROOT, all, get, nowIso, run, tx } from '../db.ts';
 import { HttpError, audit, loadOwnedExam, requireTeacher, type ExamRow } from '../http.ts';
 import { examSummary, loadQuestions, loadSections, loadTestCases, parseJson, toQuestionTeacher } from '../serialize.ts';
 import { parseExamDocx, type ImportFile } from '../import/docx.ts';
-import type { GradeDetail, QuestionTeacher, SubmissionRow } from '../../shared/types.ts';
+import { enqueueGrading } from '../grading/worker.ts';
+import { examLifecycle, queueSubmission, reviewRequired, snapshotAudience } from '../exam-lifecycle.ts';
+import type { ExamDetailTeacher, ExamListItemTeacher, GradeDetail, QuestionTeacher, SubmissionRow } from '../../shared/types.ts';
 
 const QUESTION_TYPES = ['single', 'multiple', 'truefalse', 'fill', 'short', 'code'] as const;
 
@@ -58,7 +60,7 @@ function examStats(examId: number): { totalScore: number; questionCount: number 
   return { totalScore: row?.total ?? 0, questionCount: row?.count ?? 0 };
 }
 
-function examDetail(exam: ExamRow) {
+function examDetail(exam: ExamRow): ExamDetailTeacher {
   const questions = loadQuestions(exam.id);
   const cases = loadTestCases(exam.id);
   const submissionCount =
@@ -68,6 +70,7 @@ function examDetail(exam: ExamRow) {
     questions: questions.map((q) => toQuestionTeacher(q, cases.get(q.id) ?? [])),
     sections: loadSections(exam.sections_json),
     submissionCount,
+    ...examLifecycle(exam),
   };
 }
 
@@ -94,35 +97,24 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/teacher/exams', async (req) => {
     const user = requireTeacher(req);
-    const rows = all<ExamRow & {
-      total_score: number;
-      question_count: number;
-      submission_count: number;
-      graded_count: number;
-      pending_count: number;
-      review_count: number;
-    }>(
+    const rows = all<ExamRow & { total_score: number; question_count: number }>(
       `SELECT e.*,
         (SELECT COALESCE(SUM(q.score), 0) FROM questions q WHERE q.exam_id = e.id) AS total_score,
-        (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count,
-        (SELECT COUNT(*) FROM submissions s WHERE s.exam_id = e.id) AS submission_count,
-        (SELECT COUNT(*) FROM submissions s WHERE s.exam_id = e.id AND s.status = 'graded') AS graded_count,
-        (SELECT COUNT(*) FROM submissions s WHERE s.exam_id = e.id AND s.status IN ('submitted', 'grading')) AS pending_count,
-        (SELECT COUNT(DISTINCT s.id) FROM submissions s
-           JOIN answers a ON a.submission_id = s.id
-           JOIN questions q ON q.id = a.question_id
-          WHERE s.exam_id = e.id AND s.status = 'graded' AND a.final_score IS NULL
-            AND (q.needs_manual = 1 OR q.type = 'short' OR (q.type = 'code' AND COALESCE(a.auto_score, -1) < q.score))) AS review_count
-       FROM exams e WHERE e.teacher_id = ? ORDER BY e.created_at DESC, e.id DESC`,
-      user.id,
+        (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count
+       FROM exams e WHERE e.teacher_id = ? ORDER BY e.created_at DESC, e.id DESC`, user.id,
     );
-    return rows.map((r) => ({
-      ...examSummary(r, { totalScore: r.total_score, questionCount: r.question_count }),
-      submissionCount: r.submission_count,
-      gradedCount: r.graded_count,
-      pendingCount: r.pending_count,
-      reviewCount: r.review_count,
-    }));
+    return rows.map((row): ExamListItemTeacher => {
+      const lifecycle = examLifecycle(row);
+      const { progress } = lifecycle;
+      return {
+        ...examSummary(row, { totalScore: row.total_score, questionCount: row.question_count }),
+        ...lifecycle,
+        submissionCount: progress.submitted,
+        gradedCount: progress.finalized + progress.needsReview,
+        pendingCount: progress.grading,
+        reviewCount: progress.needsReview,
+      };
+    });
   });
 
   app.post('/teacher/exams', async (req) => {
@@ -208,9 +200,12 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
         const buffer = await part.toBuffer();
         if (!buffer.length) throw new HttpError(400, `文件为空：${name || '未命名'}`);
         if (buffer.length > 20 * 1024 * 1024) throw new HttpError(413, `文件超过 20MB：${name}`);
-        files.push({ buffer, filename: name });
+        files.push({ buffer, filename: name, role: part.fieldname === 'paper' || part.fieldname === 'answer' ? part.fieldname : undefined });
       }
       if (!files.length) throw new HttpError(400, '没有收到文件');
+      if (files.some((file) => file.role) && (files.filter((file) => file.role === 'paper').length !== 1 || files.some((file) => !file.role))) {
+        throw new HttpError(400, '请上传一份试卷和至多一份参考答案');
+      }
       if (files.length > 2) throw new HttpError(400, '一次最多上传「试卷 + 参考答案」两份 .docx');
     } else {
       const body = req.body as { sample?: boolean } | undefined;
@@ -308,27 +303,70 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/teacher/exams/:id/publish', async (req) => {
     const user = requireTeacher(req);
-    const exam = loadOwnedExam(user.id, Number((req.params as { id: string }).id));
-    const stats = examStats(exam.id);
-    if (!stats.questionCount) throw new HttpError(400, '试卷还没有题目，请先导入 Word');
-    run("UPDATE exams SET status = 'published' WHERE id = ?", exam.id);
-    return { ok: true, totalScore: stats.totalScore };
+    const body = z.object({ audience: z.discriminatedUnion('type', [
+      z.object({ type: z.literal('school') }),
+      z.object({ type: z.literal('classes'), classIds: z.array(z.number().int().positive()).min(1).max(500) }),
+    ]) }).safeParse(req.body);
+    if (!body.success) throw new HttpError(400, '请选择发布班级或明确选择全校');
+    return tx(() => {
+      const exam = loadOwnedExam(user.id, Number((req.params as { id: string }).id));
+      if (exam.status !== 'draft') throw new HttpError(409, '只有草稿考试可以发布');
+      const stats = examStats(exam.id);
+      if (!stats.questionCount) throw new HttpError(400, '试卷还没有题目，请先导入 Word');
+      const audience = snapshotAudience(exam.id, body.data.audience);
+      run("UPDATE exams SET status = 'published' WHERE id = ?", exam.id);
+      audit(user.id, 'exam', exam.id, 'publish', null, { audience });
+      return { ok: true, totalScore: stats.totalScore, audience };
+    });
   });
 
   app.post('/teacher/exams/:id/close', async (req) => {
     const user = requireTeacher(req);
-    const exam = loadOwnedExam(user.id, Number((req.params as { id: string }).id));
-    run("UPDATE exams SET status = 'closed' WHERE id = ?", exam.id);
-    return { ok: true };
+    const body = z.object({ action: z.enum(['collect', 'discard']).optional() }).safeParse(req.body ?? {});
+    if (!body.success) throw new HttpError(400, '请选择未交卷草稿的处理方式');
+    return tx(() => {
+      const exam = loadOwnedExam(user.id, Number((req.params as { id: string }).id));
+      if (exam.status === 'closed') return { ok: true, collected: 0, discarded: 0 };
+      if (exam.status !== 'published') throw new HttpError(409, '只有已发布的考试可以结束');
+      const active = all<{ id: number }>("SELECT id FROM submissions WHERE exam_id = ? AND status = 'in_progress'", exam.id);
+      if (active.length && !body.data.action) throw new HttpError(409, `还有 ${active.length} 份答卷正在作答，请选择收卷或不计入`);
+      const ts = nowIso();
+      let collected = 0;
+      let discarded = 0;
+      if (body.data.action === 'discard') {
+        // Retain draft answers for audit; the tombstone keeps this cohort distinct from students who never started.
+        discarded = run("UPDATE submissions SET status = 'discarded' WHERE exam_id = ? AND status = 'in_progress'", exam.id).changes;
+      } else {
+        for (const row of active) if (queueSubmission(row.id, exam.id, ts)) collected++;
+      }
+      run("UPDATE exams SET status = 'closed' WHERE id = ?", exam.id);
+      audit(user.id, 'exam', exam.id, 'close', null, { collected, discarded });
+      return { ok: true, collected, discarded };
+    });
   });
 
   app.post('/teacher/exams/:id/publish-results', async (req) => {
     const user = requireTeacher(req);
-    const exam = loadOwnedExam(user.id, Number((req.params as { id: string }).id));
     const body = z.object({ published: z.boolean() }).safeParse(req.body);
     if (!body.success) throw new HttpError(400, '参数不合法');
-    run('UPDATE exams SET results_published = ? WHERE id = ?', body.data.published ? 1 : 0, exam.id);
-    return { ok: true };
+    return tx(() => {
+      const exam = loadOwnedExam(user.id, Number((req.params as { id: string }).id));
+      if (body.data.published) {
+        if (exam.status !== 'closed') throw new HttpError(409, '请先结束考试，再发布成绩');
+        const { progress } = examLifecycle(exam);
+        if (!progress.submitted) throw new HttpError(409, '没有可发布的已交卷成绩');
+        if (progress.inProgress || progress.grading || progress.failed || progress.needsReview || progress.finalized !== progress.submitted) {
+          throw new HttpError(409, `暂不能发布成绩：${progress.inProgress} 人答题中、${progress.grading} 人评分中、${progress.failed} 人评分异常、${progress.needsReview} 人待复核`);
+        }
+      }
+      run('UPDATE exams SET results_published = ? WHERE id = ?', body.data.published ? 1 : 0, exam.id);
+      audit(user.id, 'exam', exam.id, body.data.published ? 'publish_results' : 'withdraw_results', null, null);
+      return { ok: true };
+    });
+  });
+  app.get('/teacher/exams/:id/progress', async (req) => {
+    const exam = loadOwnedExam(requireTeacher(req).id, Number((req.params as { id: string }).id));
+    return { status: exam.status, resultsPublished: Boolean(exam.results_published), ...examLifecycle(exam) };
   });
 
   app.get('/teacher/exams/:id/submissions', async (req) => {
@@ -347,14 +385,18 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       final_score: number | null;
       submitted_at: string | null;
       answered: number;
+      grading_failed: number | null;
     }>(
-      `SELECT s.id, s.student_id, u.name AS student_name, u.student_no, u.class_id, c.name AS class_name,
+      `SELECT s.id, s.student_id, u.name AS student_name, u.student_no, CASE WHEN ep.student_id IS NOT NULL THEN ep.class_id ELSE u.class_id END AS class_id,
+         CASE WHEN ep.student_id IS NOT NULL THEN ep.class_name ELSE c.name END AS class_name,
         s.status, s.auto_score, s.final_score, s.submitted_at,
+         (SELECT gt.status = 'failed' FROM grading_tasks gt WHERE gt.submission_id = s.id ORDER BY gt.id DESC LIMIT 1) AS grading_failed,
         (SELECT COUNT(*) FROM answers a WHERE a.submission_id = s.id AND a.raw_json IS NOT NULL) AS answered
        FROM submissions s
        JOIN users u ON u.id = s.student_id
        LEFT JOIN classes c ON c.id = u.class_id
-       WHERE s.exam_id = ? ORDER BY c.sort_order, u.student_no`,
+       LEFT JOIN exam_participants ep ON ep.exam_id = s.exam_id AND ep.student_id = s.student_id
+       WHERE s.exam_id = ? ORDER BY class_name, u.student_no`,
       exam.id,
     );
 
@@ -362,7 +404,7 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       `SELECT a.submission_id, COUNT(*) AS n
        FROM answers a JOIN questions q ON q.id = a.question_id
        WHERE q.exam_id = ? AND a.final_score IS NULL
-         AND (q.needs_manual = 1 OR q.type = 'short' OR (q.type = 'code' AND COALESCE(a.auto_score, -1) < q.score))
+         AND ${reviewRequired}
        GROUP BY a.submission_id`,
       exam.id,
     );
@@ -380,7 +422,8 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       finalScore: r.final_score,
       submittedAt: r.submitted_at,
       answered: r.answered,
-      needsReview: reviewMap.get(r.id) ?? 0,
+      gradingFailed: r.status !== 'graded' && Boolean(r.grading_failed),
+      needsReview: r.status === 'graded' ? reviewMap.get(r.id) ?? 0 : 0,
       questionCount: stats.questionCount,
     }));
   });
@@ -404,12 +447,14 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
       teacher_id: number;
       sections_json: string;
     }>(
-      `SELECT s.*, u.name AS student_name, u.student_no, u.class_id, c.name AS class_name,
+      `SELECT s.*, u.name AS student_name, u.student_no, CASE WHEN ep.student_id IS NOT NULL THEN ep.class_id ELSE u.class_id END AS class_id,
+         CASE WHEN ep.student_id IS NOT NULL THEN ep.class_name ELSE c.name END AS class_name,
         e.title AS exam_title, e.teacher_id, e.sections_json
        FROM submissions s
        JOIN users u ON u.id = s.student_id
        LEFT JOIN classes c ON c.id = u.class_id
        JOIN exams e ON e.id = s.exam_id
+       LEFT JOIN exam_participants ep ON ep.exam_id = s.exam_id AND ep.student_id = s.student_id
        WHERE s.id = ?`,
       sid,
     );
@@ -472,6 +517,20 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  app.post('/teacher/submissions/:id/retry-grading', async (req) => {
+    const user = requireTeacher(req);
+    const id = Number((req.params as { id: string }).id);
+    return tx(() => {
+      const row = get<{ exam_id: number; status: string }>('SELECT exam_id, status FROM submissions WHERE id = ?', id);
+      if (!row) throw new HttpError(404, '答卷不存在');
+      loadOwnedExam(user.id, row.exam_id);
+      const task = get<{ status: string }>('SELECT status FROM grading_tasks WHERE submission_id = ? ORDER BY id DESC LIMIT 1', id);
+      if (row.status !== 'grading' || task?.status !== 'failed') throw new HttpError(409, '该答卷当前无需重新评分');
+      enqueueGrading(id);
+      audit(user.id, 'submission', id, 'retry_grading', null, null);
+      return { ok: true };
+    });
+  });
   app.patch('/teacher/answers/:id', async (req) => {
     const user = requireTeacher(req);
     const aid = Number((req.params as { id: string }).id);
@@ -518,21 +577,35 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, submissionFinalScore: total };
   });
 
-  // 一键确认自动分（只填补未人工改分的题）
+  function automaticCandidates(examId: number) {
+    return all<{ id: number; submission_id: number }>(
+      `SELECT a.id, a.submission_id FROM answers a
+       JOIN submissions s ON s.id = a.submission_id JOIN questions q ON q.id = a.question_id
+       WHERE s.exam_id = ? AND s.status = 'graded' AND a.final_score IS NULL
+         AND a.auto_score IS NOT NULL AND NOT ${reviewRequired}`, examId,
+    );
+  }
+
+  app.get('/teacher/exams/:id/confirm-auto', async (req) => {
+    const exam = loadOwnedExam(requireTeacher(req).id, Number((req.params as { id: string }).id));
+    const candidates = automaticCandidates(exam.id);
+    return { answerCount: candidates.length, submissionCount: new Set(candidates.map((row) => row.submission_id)).size };
+  });
+
   app.post('/teacher/exams/:id/confirm-auto', async (req) => {
     const user = requireTeacher(req);
-    const exam = loadOwnedExam(user.id, Number((req.params as { id: string }).id));
-    const subs = all<{ id: number }>('SELECT id FROM submissions WHERE exam_id = ?', exam.id);
-    let changed = 0;
-    for (const s of subs) {
-      const res = run(
-        'UPDATE answers SET final_score = auto_score, graded_at = ? WHERE submission_id = ? AND final_score IS NULL AND auto_score IS NOT NULL',
-        nowIso(),
-        s.id,
-      );
-      changed += res.changes;
-      recomputeSubmissionFinal(s.id);
-    }
-    return { ok: true, changed };
+    return tx(() => {
+      const exam = loadOwnedExam(user.id, Number((req.params as { id: string }).id));
+      const candidates = automaticCandidates(exam.id);
+      const ids = new Set<number>();
+      const stamp = nowIso();
+      for (const row of candidates) {
+        run('UPDATE answers SET final_score = auto_score, graded_at = ? WHERE id = ?', stamp, row.id);
+        ids.add(row.submission_id);
+      }
+      for (const id of ids) recomputeSubmissionFinal(id);
+      if (candidates.length) audit(user.id, 'exam', exam.id, 'confirm_auto', null, { changed: candidates.length, submissionCount: ids.size });
+      return { ok: true, changed: candidates.length, submissionCount: ids.size };
+    });
   });
 }

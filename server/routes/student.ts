@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { all, get, nowIso, run } from '../db.ts';
+import { all, get, nowIso, run, tx } from '../db.ts';
 import { HttpError, requireStudent } from '../http.ts';
 import { examSummary, loadQuestions, loadSections, loadTestCases, parseJson, type ExamRow } from '../serialize.ts';
-import { enqueueGrading } from '../grading/worker.ts';
+import { hasAudienceAccess, queueSubmission, studentCanAccess } from '../exam-lifecycle.ts';
 import type { AnswerSpec, QuestionStudent, StudentAnswer } from '../../shared/types.ts';
 
 const draftSchema = z.object({ answers: z.record(z.string(), z.any()) });
@@ -12,7 +12,7 @@ interface SubmissionRow {
   id: number;
   exam_id: number;
   student_id: number;
-  status: 'in_progress' | 'submitted' | 'grading' | 'graded';
+  status: 'in_progress' | 'submitted' | 'grading' | 'graded' | 'discarded';
   started_at: string;
   submitted_at: string | null;
 }
@@ -35,6 +35,7 @@ function loadSubmissionOwned(studentId: number, submissionId: number): { sub: Su
   const sub = get<SubmissionRow>('SELECT * FROM submissions WHERE id = ?', submissionId);
   if (!sub) throw new HttpError(404, '提交记录不存在');
   if (sub.student_id !== studentId) throw new HttpError(403, '无权访问该提交');
+  if (!studentCanAccess(sub.exam_id, studentId)) throw new HttpError(404, '考试不存在');
   return { sub, exam: loadExam(sub.exam_id) };
 }
 
@@ -55,13 +56,13 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
       `SELECT e.*, u.name AS teacher_name,
         (SELECT COALESCE(SUM(q.score), 0) FROM questions q WHERE q.exam_id = e.id) AS total_score,
         (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count,
-        s.id AS sub_id, s.status AS sub_status, COALESCE(s.final_score, s.auto_score) AS sub_score, s.submitted_at
+        s.id AS sub_id, s.status AS sub_status, CASE WHEN e.results_published = 1 AND s.status = 'graded' THEN COALESCE(s.final_score, s.auto_score) END AS sub_score, s.submitted_at
        FROM exams e
        JOIN users u ON u.id = e.teacher_id
        LEFT JOIN submissions s ON s.exam_id = e.id AND s.student_id = ?
-       WHERE e.status IN ('published', 'closed')
+       WHERE e.status IN ('published', 'closed') AND ${hasAudienceAccess}
        ORDER BY CASE WHEN e.status = 'published' THEN 0 ELSE 1 END, e.created_at DESC, e.id DESC`,
-      user.id,
+      user.id, user.id,
     );
 
     return rows.map((r) => ({
@@ -81,7 +82,7 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
   app.get('/student/exams/:id', async (req) => {
     const user = requireStudent(req);
     const exam = loadExam(Number((req.params as { id: string }).id));
-    if (exam.status === 'draft') throw new HttpError(404, '考试不存在');
+    if (exam.status === 'draft' || !studentCanAccess(exam.id, user.id)) throw new HttpError(404, '考试不存在');
     if (exam.status === 'closed') throw new HttpError(409, '考试已结束');
 
     const now = Date.now();
@@ -162,8 +163,8 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
 
   app.put('/student/submissions/:id/draft', async (req) => {
     const user = requireStudent(req);
-    const { sub } = loadSubmissionOwned(user.id, Number((req.params as { id: string }).id));
-    if (sub.status !== 'in_progress') throw new HttpError(409, '试卷已提交，不能再保存');
+    const { sub, exam } = loadSubmissionOwned(user.id, Number((req.params as { id: string }).id));
+    if (exam.status !== 'published' || sub.status !== 'in_progress') throw new HttpError(409, '考试已结束或试卷已提交，不能再保存');
 
     const parsed = draftSchema.safeParse(req.body);
     if (!parsed.success) throw new HttpError(400, '答案格式不合法');
@@ -190,6 +191,7 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
     const user = requireStudent(req);
     const { sub, exam } = loadSubmissionOwned(user.id, Number((req.params as { id: string }).id));
 
+    if (sub.status === 'discarded') throw new HttpError(409, '考试已结束，草稿未收卷');
     if (sub.status !== 'in_progress') {
       return { ok: true, status: sub.status, alreadySubmitted: true };
     }
@@ -198,20 +200,7 @@ export async function studentRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(409, '已超过考试结束时间');
     }
 
-    run("UPDATE submissions SET status = 'grading', submitted_at = ? WHERE id = ?", nowIso(), sub.id);
-
-    // 未作答的题也写入一条空记录，方便教师端看到全量题目
-    const questionIds = all<{ id: number }>('SELECT id FROM questions WHERE exam_id = ?', exam.id);
-    for (const q of questionIds) {
-      run(
-        `INSERT INTO answers (submission_id, question_id, raw_json) VALUES (?, ?, NULL)
-         ON CONFLICT(submission_id, question_id) DO NOTHING`,
-        sub.id,
-        q.id,
-      );
-    }
-
-    enqueueGrading(sub.id);
+    tx(() => queueSubmission(sub.id, exam.id));
     return { ok: true, status: 'grading' };
   });
 

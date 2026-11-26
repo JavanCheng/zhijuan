@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
   App as AntApp,
@@ -9,6 +9,8 @@ import {
   InputNumber,
   Modal,
   Space,
+  Checkbox,
+  Radio,
   Spin,
   Steps,
   Table,
@@ -52,17 +54,27 @@ export function TeacherExam() {
   const { id } = useParams();
   const examId = Number(id);
   const navigate = useNavigate();
+  const location = useLocation();
+  const from: unknown = location.state?.returnTo;
+  const returnTo = typeof from === 'string' && /^\/teacher(?:\?|$)/.test(from) ? from : '/teacher';
   const { message, modal } = AntApp.useApp();
 
   const [exam, setExam] = useState<ExamDetailTeacher | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [audience, setAudience] = useState<'classes' | 'school'>('classes');
+  const [classIds, setClassIds] = useState<number[]>([]);
+  const [classes, setClasses] = useState<Array<{ id: number; name: string; activeCount: number }> | null>(null);
+  const [publishError, setPublishError] = useState('');
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [studentPreview, setStudentPreview] = useState(false);
+  const [closeAction, setCloseAction] = useState<'collect' | 'discard'>('collect');
+  const [runtimeAvailable, setRuntimeAvailable] = useState<boolean | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  // 已选文件（试卷 + 参考答案）；用原始 File 作为唯一数据源，避免依赖 antd 的 originFileObj
-  const [picked, setPicked] = useState<File[]>([]);
-
+  const [files, setFiles] = useState<Partial<Record<'paper' | 'answer', File>>>({});
   const load = useCallback(async (isCurrent: () => boolean = () => true) => {
     try {
       const data = await api<ExamDetailTeacher>(`/api/teacher/exams/${examId}`);
@@ -98,34 +110,28 @@ export function TeacherExam() {
     }
   }
 
-  // 先本地收集文件（试卷 + 参考答案），点「解析并预览」再统一提交
-  const uploadProps: UploadProps = {
-    accept: '.docx',
-    multiple: true,
-    fileList: picked.map((file, i) => ({
-      uid: `${i}-${file.name}-${file.size}`,
-      name: file.name,
-      size: file.size,
-      status: 'done' as const,
-    })),
-    disabled: importing || (exam?.submissionCount ?? 0) > 0,
-    beforeUpload: (file) => {
-      setPicked((prev) => [...prev.filter((item) => item.name !== file.name), file as File].slice(-2));
-      return false;
-    },
-    onRemove: (file) => {
-      setPicked((prev) => prev.filter((item) => item.name !== file.name));
-    },
-    showUploadList: { showPreviewIcon: false },
-  };
-
-  async function startImport() {
-    if (!picked.length) return;
-    const form = new FormData();
-    for (const file of picked) form.append('file', file, file.name);
-    await runImport(form);
+  function uploadProps(role: 'paper' | 'answer'): UploadProps {
+    const file = files[role];
+    return {
+      accept: '.docx', maxCount: 1,
+      fileList: file ? [{ uid: role, name: file.name, status: 'done' }] : [],
+      disabled: importing || (exam?.submissionCount ?? 0) > 0,
+      beforeUpload: (next) => {
+        if (!/\.docx$/i.test(next.name)) { void message.warning('请选择 .docx 文件'); return Upload.LIST_IGNORE; }
+        setFiles((current) => ({ ...current, [role]: next }));
+        return false;
+      },
+      onRemove: () => { setFiles((current) => ({ ...current, [role]: undefined })); },
+    };
   }
 
+  async function startImport() {
+    if (!files.paper) return;
+    const form = new FormData();
+    form.append('paper', files.paper);
+    if (files.answer) form.append('answer', files.answer);
+    await runImport(form);
+  }
   async function confirmImport() {
     if (!importResult || !exam) return;
     setBusy(true);
@@ -136,7 +142,7 @@ export function TeacherExam() {
       });
       setImportOpen(false);
       setImportResult(null);
-      setPicked([]);
+      setFiles({});
       void message.success('题目已导入，请核对分值后发布考试');
       await load();
     } catch (err) {
@@ -146,35 +152,53 @@ export function TeacherExam() {
     }
   }
 
+  async function openPublish() {
+    setPublishOpen(true);
+    setPublishError('');
+    setRuntimeAvailable(null);
+    if (exam?.questions.some((question) => question.type === 'code')) {
+      void api<{ python: boolean }>('/api/auth/runtime').then((runtime) => setRuntimeAvailable(Boolean(runtime.python)), () => setRuntimeAvailable(false));
+    }
+    try {
+      const result = await api<{ classes: Array<{ id: number; name: string; activeCount: number }> }>('/api/teacher/classes/overview');
+      setClasses(result.classes);
+    } catch {
+      setPublishError('班级名册加载失败，请关闭后重试。');
+    }
+  }
+
   async function publish() {
     setBusy(true);
+    setPublishError('');
     try {
-      await post(`/api/teacher/exams/${examId}/publish`);
-      void message.success('考试已发布，学生工作台现在可以看到并作答');
+      await post(`/api/teacher/exams/${examId}/publish`, { audience: audience === 'school' ? { type: 'school' } : { type: 'classes', classIds } });
+      setPublishOpen(false);
+      void message.success('考试已发布，应考名单已保存');
       await load();
     } catch (err) {
-      void message.error(err instanceof Error ? err.message : '发布失败');
+      setPublishError(err instanceof Error ? err.message : '发布失败');
     } finally {
       setBusy(false);
     }
   }
 
   function closeExam() {
-    modal.confirm({
-      title: '结束考试',
-      content: '结束后学生将无法继续作答，确定结束吗？',
-      okText: '结束考试',
-      cancelText: '取消',
-      onOk: async () => {
-        try {
-          await post(`/api/teacher/exams/${examId}/close`);
-          await load();
-        } catch (err) {
-          void message.error(err instanceof Error ? err.message : '结束考试失败');
-          throw err;
-        }
-      },
-    });
+    setCloseAction('collect');
+    setCloseOpen(true);
+  }
+
+  async function confirmClose() {
+    setBusy(true);
+    try {
+      const result = await post<{ collected: number; discarded: number }>(`/api/teacher/exams/${examId}/close`, { action: closeAction });
+      setCloseOpen(false);
+      void message.success(`考试已结束 · 已收卷 ${result.collected} 份 · 未收卷 ${result.discarded} 份`);
+      await load();
+    } catch (err) {
+      void message.error(err instanceof Error ? err.message : '结束考试失败');
+    } finally {
+      setBusy(false);
+    }
   }
 
   function removeExam() {
@@ -187,7 +211,7 @@ export function TeacherExam() {
       onOk: async () => {
         try {
           await del(`/api/teacher/exams/${examId}`);
-          navigate('/teacher', { replace: true });
+          navigate(returnTo, { replace: true });
         } catch (err) {
           void message.error(err instanceof Error ? err.message : '删除考试失败');
           throw err;
@@ -234,6 +258,10 @@ export function TeacherExam() {
   const hasQuestions = exam.questions.length > 0;
   const locked = exam.submissionCount > 0;
   const errorCount = importResult?.counts.errors ?? 0;
+  const previewQuestions = importResult?.questions ?? [];
+  const reviewQuestions = previewQuestions.filter((question) => question.needsManual).length;
+  const missingAnswers = previewQuestions.filter((question) => !question.needsManual && question.type !== 'code' && question.answer.kind === 'none').length;
+  const problemQuestions = previewQuestions.filter((question) => question.issues.length > 0);
   // 每个大题的第一题（用于预览里只展示一次材料）
   const sectionFirstSeq = new Map<number, number>();
   for (const q of importResult?.questions ?? []) {
@@ -302,7 +330,7 @@ export function TeacherExam() {
     <Page>
       <PageHeader
         back={
-          <Button type="link" icon={<ArrowLeftOutlined />} className="!px-0" onClick={() => navigate('/teacher')}>
+          <Button type="link" icon={<ArrowLeftOutlined />} className="!px-0" onClick={() => navigate(returnTo)}>
             返回考试列表
           </Button>
         }
@@ -313,17 +341,18 @@ export function TeacherExam() {
             <ExamStatusTag status={exam.status} />
             {exam.resultsPublished ? <Pill tone="green">成绩已发布</Pill> : null}
             <span>
-              共 {exam.questionCount} 题 · 合计 {exam.totalScore} 分 · {exam.submissionCount} 人提交
+              共 {exam.questionCount} 题 · 合计 {exam.totalScore} 分 · {exam.progress.submitted} 人交卷
             </span>
           </Space>
         }
         extra={
           exam.status === 'draft' ? (
             <>
+              <Button disabled={!hasQuestions} onClick={() => setStudentPreview(true)}>学生视角预览</Button>
               <Button danger onClick={removeExam}>
                 删除
               </Button>
-              <Button type="primary" loading={busy} disabled={!hasQuestions} onClick={publish}>
+              <Button type="primary" loading={busy} disabled={!hasQuestions} onClick={() => void openPublish()}>
                 发布考试
               </Button>
             </>
@@ -349,7 +378,7 @@ export function TeacherExam() {
           items={[
             { title: '导入题目', description: `${exam.questionCount} 题` },
             { title: '发布考试', description: '学生开始作答' },
-            { title: '批改与校准', description: `${exam.submissionCount} 份答卷` },
+            { title: '批改与校准', description: `${exam.progress.submitted} 份已交卷` },
             { title: '成绩发布', description: exam.resultsPublished ? '已发布' : '待发布' },
           ]}
         />
@@ -365,30 +394,27 @@ export function TeacherExam() {
         }
       >
         <p className="mb-4 text-[12.5px] leading-6 text-ui-secondary">
-          一次可上传两份 docx：<strong>试卷</strong> + <strong>参考答案</strong>（文件名含「答案/参考」的会被识别为参考答案）。
+          分别上传试卷和可选的参考答案，无需修改文件名。
           系统先给出解析预览，确认无误再写入试卷。
           {locked ? ' 当前已有学生提交，题目与分值已锁定，不能重新导入。' : ''}
         </p>
 
-        <Upload.Dragger {...uploadProps} style={{ background: 'var(--ui-surface-subtle)' }}>
-          <p className="ant-upload-drag-icon">
-            <InboxOutlined />
-          </p>
-          <p className="ant-upload-text">
-            {importing ? '正在解析…' : locked ? '已有学生提交，暂不可重新导入' : '把试卷和参考答案拖到这里，或点击选择文件'}
-          </p>
-          <p className="ant-upload-hint">
-            {locked
-              ? '如需修改题目，请先删除学生提交记录（当前版本未开放）或新建一场考试。'
-              : hasQuestions
-                ? '重新导入会覆盖当前全部题目；已产生学生提交后不可再导入。'
-                : '支持两种格式：① 真实试卷（综合题材料 + 题干末尾「（单选题，2分）」+ 独立参考答案）；② 模板格式（【题型】标记）。'}
-          </p>
-        </Upload.Dragger>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Upload.Dragger {...uploadProps('paper')} style={{ background: 'var(--ui-surface-subtle)' }}>
+            <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+            <p className="ant-upload-text">试卷 Word（必选）</p>
+            <p className="ant-upload-hint">拖入试卷，或点击选择 .docx</p>
+          </Upload.Dragger>
+          <Upload.Dragger {...uploadProps('answer')} style={{ background: 'var(--ui-surface-subtle)' }}>
+            <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+            <p className="ant-upload-text">参考答案（可选）</p>
+            <p className="ant-upload-hint">答案已写在试卷内时可留空</p>
+          </Upload.Dragger>
+        </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button type="primary" size="small" loading={importing} disabled={locked || !picked.length} onClick={() => void startImport()}>
-            解析并预览{picked.length ? `（${picked.length} 个文件）` : ''}
+          <Button type="primary" size="small" loading={importing} disabled={locked || !files.paper} onClick={() => void startImport()}>
+            解析并预览
           </Button>
           <Button size="small" loading={importing} disabled={locked} onClick={() => runImport({ sample: true })}>
             使用示例模板试导入
@@ -432,8 +458,8 @@ export function TeacherExam() {
           <Button key="cancel" onClick={() => setImportOpen(false)}>
             取消
           </Button>,
-          <Button key="ok" type="primary" loading={busy} disabled={errorCount > 0} onClick={confirmImport}>
-            {errorCount > 0 ? '请先修正 Word 中的错误' : '确认导入'}
+          <Button key="ok" type="primary" loading={busy} disabled={errorCount > 0 || !previewQuestions.length} onClick={confirmImport}>
+            {errorCount > 0 ? '请先修正 Word 中的错误' : hasQuestions ? '替换现有题目' : '确认导入'}
           </Button>,
         ]}
       >
@@ -447,6 +473,23 @@ export function TeacherExam() {
               {importResult.counts.warnings > 0 ? <Pill tone="amber">{importResult.counts.warnings} 个警告</Pill> : null}
             </Space>
 
+            {reviewQuestions > 0 || missingAnswers > 0 ? (
+              <Space size={8} wrap className="mb-3">
+                {reviewQuestions ? <Pill tone="amber">{reviewQuestions} 题需人工评分</Pill> : null}
+                {missingAnswers ? <Pill tone="amber">{missingAnswers} 题缺少自动评分答案</Pill> : null}
+              </Space>
+            ) : null}
+            {hasQuestions ? <Alert className="mb-3" type="warning" showIcon title="确认后会替换现有全部题目" /> : null}
+            {problemQuestions.length ? (
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-ui-secondary">定位问题题目：</span>
+                {problemQuestions.map((q) => <Button key={q.seq} size="small" type="link" onClick={() => {
+                  const target = document.getElementById(`import-preview-q-${q.seq}`);
+                  target?.scrollIntoView({ block: 'nearest' });
+                  target?.focus({ preventScroll: true });
+                }}>第 {q.seq} 题</Button>)}
+              </div>
+            ) : null}
             {importResult.notes.length ? (
               <Alert type="info" message={importResult.notes.join('；')} className="mb-3" />
             ) : null}
@@ -457,7 +500,7 @@ export function TeacherExam() {
                 const section = q.sectionIndex != null ? importResult.sections[q.sectionIndex] : undefined;
                 const showSection = Boolean(section) && sectionFirstSeq.get(q.sectionIndex!) === q.seq;
                 return (
-                  <div key={q.seq}>
+                  <div key={q.seq} id={`import-preview-q-${q.seq}`} tabIndex={-1}>
                     {showSection && section ? <SectionMaterial section={section} defaultOpen={false} /> : null}
                     <div
                       className={`mb-3 rounded-xl border p-3.5 ${hardError ? 'border-[var(--ui-status-danger-accent)] bg-[var(--ui-status-danger-bg)]' : 'border-ui-line'}`}
@@ -494,6 +537,51 @@ export function TeacherExam() {
             </div>
           </>
         ) : null}
+      </Modal>
+      <Modal open={studentPreview} title="学生视角预览" width={820} footer={null} onCancel={() => setStudentPreview(false)}
+        styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}>
+        <div className="grid gap-4">
+          {exam.questions.map((question, index) => {
+            const section = exam.sections.find((item) => item.index === question.sectionIndex);
+            const firstInSection = index === 0 || exam.questions[index - 1]?.sectionIndex !== question.sectionIndex;
+            return <article key={question.id} className="rounded-lg border border-ui-line p-4">
+              {section && firstInSection ? <SectionMaterial section={section} /> : null}
+              <div className="mb-2 font-medium">第 {question.seq} 题 · {scoreText(question.score)} 分 <TypeTag type={question.type} /></div>
+              <div className="question-html" dangerouslySetInnerHTML={{ __html: question.stemHtml }} />
+              {question.options.length ? <ul className="mt-2 list-none pl-0">{question.options.map((option) => <li key={option.key}>{option.key}. {option.text}</li>)}</ul> : null}
+            </article>;
+          })}
+        </div>
+      </Modal>
+      <Modal open={publishOpen} title="检查并发布考试" okText="发布考试" confirmLoading={busy} onOk={() => void publish()}
+        onCancel={() => setPublishOpen(false)} okButtonProps={{ disabled: !classes || (audience === 'classes' && classIds.length === 0) }}>
+        <div className="grid gap-3">
+          <p>发布时会保存启用学生的应考名单，之后转班不会改变本场考试的名单。</p>
+          {runtimeAvailable === false ? <Alert type="warning" showIcon title="暂无法确认 Python 运行环境" description="代码题可能无法自动评分。建议先联系管理员检查运行环境，或准备人工评分。" /> : null}
+          <Radio.Group value={audience} onChange={(event) => setAudience(event.target.value)} options={[
+            { value: 'classes', label: '指定班级' }, { value: 'school', label: '全校启用学生' },
+          ]} />
+          {audience === 'classes' ? <div role="group" aria-label="应考班级" className="max-h-56 overflow-auto rounded-lg border border-ui-line p-3">
+            {!classes ? (publishError ? null : <Spin size="small" />) : classes.length ? (
+              <Checkbox.Group className="!grid gap-2" value={classIds} onChange={(values) => setClassIds(values.map(Number))}
+                options={classes.map((item) => ({ value: item.id, label: `${item.name}（${item.activeCount} 位启用）`, disabled: item.activeCount === 0 }))} />
+            ) : <p>暂无班级，请先在班级管理中添加。</p>}
+            {classes && classIds.length ? <p className="mt-3 text-ui-secondary">预计应考 {classes.filter((item) => classIds.includes(item.id)).reduce((total, item) => total + item.activeCount, 0)} 人，最终以发布时名册为准。</p> : null}
+          </div> : (
+            <Alert type="warning" showIcon title="全校启用学生均可参加考试" />
+          )}
+          {publishError ? <Alert type="error" showIcon title={publishError} /> : null}
+        </div>
+      </Modal>
+      <Modal open={closeOpen} title="结束考试" okText="确认结束" confirmLoading={busy} onOk={() => void confirmClose()}
+        onCancel={() => setCloseOpen(false)}>
+        <div className="grid gap-3">
+          <p>当前显示有 {exam.progress.inProgress} 位学生答题中。结束后不能继续作答。</p>
+          <Radio.Group value={closeAction} onChange={(event) => setCloseAction(event.target.value)} options={[
+            { value: 'collect', label: '按已保存答案收卷，并进入评分' },
+            { value: 'discard', label: '不收未交草稿，不计入成绩' },
+          ]} />
+        </div>
       </Modal>
     </Page>
   );

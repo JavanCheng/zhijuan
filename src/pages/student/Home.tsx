@@ -48,7 +48,7 @@ export function StudentHome() {
   const stats = useMemo(() => {
     const list = exams ?? [];
     const todo = list.filter((exam) => exam.status === 'published' && !exam.submission).length;
-    const inProgress = list.filter((exam) => exam.submission?.status === 'in_progress').length;
+    const inProgress = list.filter((exam) => exam.status === 'published' && exam.submission?.status === 'in_progress').length;
     const waiting = list.filter(
       (exam) => exam.submission && (exam.submission.status === 'submitted' || exam.submission.status === 'grading'),
     ).length;
@@ -104,7 +104,8 @@ export function StudentHome() {
         <Row className="content-reveal" gutter={[16, 16]}>
           {exams.map((exam) => {
             const sub = exam.submission;
-            const inProgress = sub?.status === 'in_progress';
+            const inProgress = exam.status === 'published' && sub?.status === 'in_progress';
+             const notCollected = sub?.status === 'discarded' || (exam.status === 'closed' && sub?.status === 'in_progress');
             const waiting = sub && (sub.status === 'submitted' || sub.status === 'grading');
             const graded = sub?.status === 'graded';
             const showScore = exam.resultsPublished && graded && sub?.score != null;
@@ -160,7 +161,9 @@ export function StudentHome() {
                   ) : null}
 
                   <div className="mt-auto flex flex-wrap items-center gap-2">
-                    {exam.status === 'closed' && !sub ? (
+                    {notCollected ? (
+                       <span className="text-[12.5px] text-ui-secondary">考试已结束，草稿未收卷</span>
+                     ) : exam.status === 'closed' && !sub ? (
                       <span className="text-[12.5px] text-ui-secondary">考试已结束</span>
                     ) : inProgress ? (
                       <Button type="primary" size="small" icon={<PlayCircleOutlined />} onClick={() => navigate(`/student/exam/${exam.id}`)}>

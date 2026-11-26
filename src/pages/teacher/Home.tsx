@@ -1,63 +1,64 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  App as AntApp,
-  Button,
-  Card,
-  Col,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Progress,
-  Row,
-  Skeleton,
-  Tooltip,
-} from 'antd';
-import {
-  BarChartOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  DownloadOutlined,
-  FileTextOutlined,
-  PlusOutlined,
-  TeamOutlined,
-} from '@ant-design/icons';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Alert, App as AntApp, Button, Card, Form, Input, InputNumber, Modal, Segmented, Skeleton } from 'antd';
+import { DownloadOutlined, FileTextOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { api, del, post } from '../../api';
-import type { AnalyticsMeta, ExamSummary } from '../../../shared/types';
-import { EmptyState, ExamStatusTag, IconButton, Page, PageHeader, Pill, StatCard } from '../../ui';
+import type { ExamSummary, ExamListItemTeacher } from '../../../shared/types';
+import { formatDate, scoreText } from '../../format';
+import { EmptyState, ExamStatusTag, Page, PageHeader, Pill } from '../../ui';
 
-const { TextArea } = Input;
+type ExamCard = ExamListItemTeacher;
 
-type ExamCard = ExamSummary & {
-  submissionCount: number;
-  gradedCount: number;
-  pendingCount: number;
-  reviewCount: number;
-};
+type Filter = 'all' | 'draft' | 'active' | 'action' | 'finished';
+const FILTERS: Array<{ label: string; value: Filter }> = [
+  { label: '全部', value: 'all' },
+  { label: '草稿', value: 'draft' },
+  { label: '进行中', value: 'active' },
+  { label: '待处理', value: 'action' },
+  { label: '已结束', value: 'finished' },
+];
 
-interface RuntimeInfo {
-  python: string | null;
-  pythonSource: string;
-  node: string;
+interface CreateForm { title: string; description?: string; durationMin: number }
+
+function needsAttention(exam: ExamCard) {
+  const p = exam.progress;
+  return p.failed > 0 || p.needsReview > 0 || (exam.status === 'closed' && !exam.resultsPublished && p.finalized > 0 && p.finalized === p.submitted);
 }
 
-interface CreateForm {
-  title: string;
-  description?: string;
-  durationMin: number;
+function matchesFilter(exam: ExamCard, filter: Filter) {
+  switch (filter) {
+    case 'draft': return exam.status === 'draft';
+    case 'active': return exam.status === 'published';
+    case 'action': return needsAttention(exam);
+    case 'finished': return exam.status === 'closed';
+    default: return true;
+  }
+}
+
+function nextAction(exam: ExamCard) {
+  const detail = `/teacher/exam/${exam.id}`;
+  if (exam.status === 'draft') return { label: exam.questionCount ? '检查并发布' : '导入题目', to: detail };
+  if (exam.resultsPublished) return { label: '查看本场学情', to: `/teacher/analytics?examId=${exam.id}` };
+  if (exam.progress.failed) return { label: '处理评分异常', to: `${detail}/grading?queue=failed` };
+  if (exam.reviewCount) return { label: '继续批改', to: `${detail}/grading` };
+  if (exam.status === 'published') return { label: '查看交卷', to: `${detail}/grading` };
+  if (exam.pendingCount) return { label: '查看评分进度', to: `${detail}/grading` };
+  return { label: exam.gradedCount ? '检查并发布成绩' : '查看交卷', to: `${detail}/grading` };
 }
 
 export function TeacherHome() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const rawFilter = params.get('status');
+  const filter = FILTERS.find((option) => option.value === rawFilter)?.value ?? 'all';
+  const keyword = params.get('q') ?? '';
   const { message, modal } = AntApp.useApp();
   const [form] = Form.useForm<CreateForm>();
-
   const [exams, setExams] = useState<ExamCard[] | null>(null);
-  const [meta, setMeta] = useState<AnalyticsMeta | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pending, setPending] = useState(false);
+  const returnTo = `/teacher${params.size ? `?${params}` : ''}`;
 
   const load = useCallback(async (isCurrent: () => boolean = () => true) => {
     try {
@@ -65,41 +66,34 @@ export function TeacherHome() {
       if (!isCurrent()) return;
       setExams(data);
       setLoadFailed(false);
-    } catch (err) {
-      if (!isCurrent()) return;
-      setLoadFailed(true);
-      void message.error({ key: 'teacher-exams-load', content: err instanceof Error ? err.message : '加载失败' });
+    } catch {
+      if (isCurrent()) setLoadFailed(true);
     }
-  }, [message]);
+  }, []);
 
   useEffect(() => {
     let active = true;
     void load(() => active);
-    api<RuntimeInfo>('/api/auth/runtime').then((runtime) => {
-      if (active && !runtime.python) {
-        void message.warning({
-          key: 'teacher-python-runtime',
-          content: '未检测到 Python 运行时，代码题将无法评测。请查看 README 的「代码运行时」章节，或设置 PYTHON_BIN。',
-          duration: 6,
-        });
-      }
-    }).catch(() => {});
-    api<AnalyticsMeta>('/api/teacher/analytics/meta').then((data) => {
-      if (active) setMeta(data);
-    }).catch(() => {});
     return () => { active = false; };
-  }, [load, message]);
+  }, [load]);
 
-  const stats = useMemo(() => {
-    const list = exams ?? [];
-    const active = list.filter((exam) => exam.status === 'published').length;
-    const pendingReviews = list.reduce((sum, exam) => sum + exam.pendingCount + exam.reviewCount, 0);
-    const graded = list.reduce((sum, exam) => sum + exam.gradedCount, 0);
-    return { total: list.length, active, pendingReviews, graded };
+  const sorted = useMemo(() => {
+    const rank = (exam: ExamCard) => needsAttention(exam) ? 0 : exam.status === 'published' ? 1 : exam.status === 'draft' ? 2 : 3;
+    return [...(exams ?? [])].sort((a, b) => rank(a) - rank(b) || b.createdAt.localeCompare(a.createdAt) || b.id - a.id);
   }, [exams]);
+  const query = keyword.trim().toLocaleLowerCase();
+  const visible = sorted.filter((exam) => matchesFilter(exam, filter) && exam.title.toLocaleLowerCase().includes(query));
+
+  function updateFilter(key: 'status' | 'q', value: string) {
+    const next = new URLSearchParams(params);
+    if (!value || (key === 'status' && value === 'all')) next.delete(key);
+    else next.set(key, value);
+    setParams(next, { replace: true });
+  }
 
   async function createExam() {
-    const values = await form.validateFields();
+    let values: CreateForm;
+    try { values = await form.validateFields(); } catch { return; }
     setPending(true);
     try {
       const exam = await post<ExamSummary>('/api/teacher/exams', {
@@ -109,7 +103,7 @@ export function TeacherHome() {
       });
       setCreating(false);
       form.resetFields();
-      navigate(`/teacher/exam/${exam.id}`);
+      navigate(`/teacher/exam/${exam.id}`, { state: { returnTo } });
     } catch (err) {
       void message.error(err instanceof Error ? err.message : '创建失败');
     } finally {
@@ -119,235 +113,95 @@ export function TeacherHome() {
 
   function removeExam(exam: ExamCard) {
     modal.confirm({
-      title: '删除考试',
-      content: `确定删除「${exam.title}」吗？该操作不可恢复。`,
+      title: '删除草稿',
+      content: `确定删除「${exam.title}」及其题目吗？该操作不可恢复。`,
       okText: '删除',
       okButtonProps: { danger: true },
       cancelText: '取消',
       onOk: async () => {
         try {
           await del(`/api/teacher/exams/${exam.id}`);
+          setExams((old) => old?.filter((entry) => entry.id !== exam.id) ?? null);
+          void message.success('考试草稿已删除');
           await load();
         } catch (err) {
           void message.error(err instanceof Error ? err.message : '删除失败');
+          throw err;
         }
       },
     });
   }
 
   return (
-    <Page>
-      <PageHeader
-        eyebrow="Overview"
-        title="考试管理"
-        subtitle="用 Word 建卷 → 发布 → 自动评分 → 校准出分，全过程留痕；成绩会自动汇总到学情看板。"
-        extra={
-          <>
-            <Tooltip title="查看班级与学生维度的图表汇报">
-              <Button icon={<BarChartOutlined />} onClick={() => navigate('/teacher/analytics')}>
-                学情看板
-              </Button>
-            </Tooltip>
-            <Button icon={<DownloadOutlined />} href="/api/template.docx" download>
-              下载模板
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
-              新建考试
-            </Button>
-          </>
-        }
-      />
-
-
-
-      <div className="mb-5 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-        <StatCard
-          label="考试总数"
-          value={stats.total}
-          suffix="场"
-          icon={<FileTextOutlined />}
-          tone="blue"
-          hint={`${stats.active} 场正在进行`}
-        />
-        <StatCard
-          label="已评答卷"
-          value={stats.graded}
-          suffix="份"
-          icon={<CheckCircleOutlined />}
-          tone="green"
-          hint="自动评分 + 人工校准"
-        />
-        <StatCard
-          label="待批改"
-          value={stats.pendingReviews}
-          suffix="份"
-          icon={<ClockCircleOutlined />}
-          tone={stats.pendingReviews ? 'amber' : 'gray'}
-          hint={stats.pendingReviews ? '建议先处理待校准答卷' : '暂无待处理答卷'}
-        />
-        <StatCard
-          label="学生规模"
-          value={meta?.students.length ?? '—'}
-          suffix={meta ? `人 · ${meta.classes.length} 个班` : '人'}
-          icon={<TeamOutlined />}
-          tone="purple"
-          hint={meta ? meta.classes.map((item) => item.name).join('、') : '正在读取班级信息'}
-        />
-      </div>
-
+    <Page className="max-w-[1260px]">
+      <PageHeader title="考试管理" subtitle="查看每场考试的进度，并继续当前需要完成的工作。"
+        extra={<Button type="primary" aria-label="新建考试" icon={<PlusOutlined />} onClick={() => setCreating(true)}>新建考试</Button>} />
+      {exams ? (
+        <Card className="mb-4" styles={{ body: { padding: '12px 16px' } }}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Segmented<Filter> className="max-w-full overflow-x-auto" aria-label="考试状态" value={filter} options={FILTERS.map(({ label, value }) => ({
+              value, label: `${label} ${sorted.filter((exam) => matchesFilter(exam, value)).length}`,
+            }))} onChange={(value) => updateFilter('status', value)} />
+            <Input className="!w-full sm:!w-[240px]" prefix={<SearchOutlined aria-hidden />} aria-label="搜索考试标题" placeholder="搜索考试标题" allowClear value={keyword} onChange={(event) => updateFilter('q', event.target.value)} />
+          </div>
+        </Card>
+      ) : null}
+      {loadFailed && exams ? <Alert className="mb-4" type="warning" showIcon title="加载失败，仍显示上次读取的考试" action={<Button size="small" onClick={() => void load()}>重试</Button>} /> : null}
       {exams === null && loadFailed ? (
         <EmptyState title="考试列表暂不可用" action={<Button onClick={() => void load()}>重试</Button>} />
-      ) : exams === null ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {[0, 1, 2].map((key) => (
-            <Card key={key}>
-              <Skeleton paragraph={{ rows: 4 }} />
-            </Card>
-          ))}
-        </div>
-      ) : exams.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon={<FileTextOutlined />}
-            title="还没有考试，先新建一场吧"
-            description="创建考试后导入 Word 试卷，系统会自动识别题型、答案与测试点；发布后学生即可在线作答。"
-            action={
-              <>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
-                  新建考试
-                </Button>
-                <Button icon={<DownloadOutlined />} href="/api/template.docx" download>
-                  先看题目模板
-                </Button>
-              </>
-            }
-          />
-        </Card>
+      ) : exams === null ? <Skeleton active paragraph={{ rows: 6 }} /> : exams.length === 0 ? (
+        <Card><EmptyState icon={<FileTextOutlined />} title="还没有考试"
+          description="创建考试后导入 Word 试卷，再选择发放范围。"
+          action={<Button icon={<DownloadOutlined />} href="/api/template.docx" download>下载题目模板</Button>} /></Card>
+      ) : visible.length === 0 ? (
+        <Card><EmptyState title="没有匹配的考试" description="试试其他标题或考试状态。"
+          action={<Button onClick={() => { const next = new URLSearchParams(params); next.delete('status'); next.delete('q'); setParams(next, { replace: true }); }}>清除筛选</Button>} /></Card>
       ) : (
-        <Row className="content-reveal" gutter={[16, 16]}>
-          {exams.map((exam) => {
-            const gradedRate = exam.submissionCount
-              ? Math.round((exam.gradedCount / exam.submissionCount) * 100)
-              : 0;
+        <div className="grid gap-3">
+          {visible.map((exam) => {
+            const action = nextAction(exam);
+            const detail = `/teacher/exam/${exam.id}`;
             return (
-              <Col xs={24} md={12} xl={8} key={exam.id}>
-                <Card
-                  style={{ height: '100%' }}
-                  styles={{ body: { height: '100%', display: 'flex', flexDirection: 'column', gap: 14 } }}
-                >
+              <Card key={exam.id} styles={{ body: { padding: '14px 16px' } }}>
+                <div className="grid items-center gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <div className="min-w-0">
+                    <h2 className="m-0 text-[15px] font-semibold [overflow-wrap:anywhere]"><Link to={detail} state={{ returnTo }}>{exam.title}</Link></h2>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <ExamStatusTag status={exam.status} />
+                      {exam.resultsPublished ? <Pill tone="green">成绩已发布</Pill> : null}
+                      <span className="text-xs text-ui-tertiary">{formatDate(exam.createdAt)}</span>
+                    </div>
+                  </div>
+                  <div className="text-xs leading-6 text-ui-secondary">
+                    <div>{exam.questionCount} 题 · {scoreText(exam.totalScore)} 分 · {exam.durationMin} 分钟</div>
+                    {exam.status !== 'draft' ? <div className="flex flex-wrap gap-x-3">
+                      <span>已评分 {exam.gradedCount} 份</span>
+                      {exam.pendingCount ? <span>评分中 {exam.pendingCount} 份</span> : null}
+                      {exam.reviewCount ? <span className="text-ui-warning-text">待复核 {exam.reviewCount} 份</span> : null}
+                    </div> : null}
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <ExamStatusTag status={exam.status} />
-                    {exam.resultsPublished ? <Pill tone="green">成绩已发布</Pill> : null}
-                    <span className="ml-auto text-[11px] text-ui-tertiary">#{exam.id}</span>
+                    {action.to !== detail ? <Button size="small" onClick={() => navigate(detail, { state: { returnTo } })}>试卷详情</Button> : null}
+                    {exam.status === 'draft' ? <Button size="small" type="text" danger onClick={() => removeExam(exam)}>删除</Button> : null}
+                    <Button size="small" type="primary" onClick={() => navigate(action.to, { state: { returnTo } })}>{action.label}</Button>
                   </div>
-
-                  <div>
-                    <div className="text-[16px] font-semibold leading-snug text-ui-primary [overflow-wrap:anywhere]">{exam.title}</div>
-                    {exam.description ? (
-                      <div className="mt-1 line-clamp-2 text-[12.5px] leading-6 text-ui-secondary [overflow-wrap:anywhere]" title={exam.description}>{exam.description}</div>
-                    ) : null}
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 rounded-xl bg-ui-subtle px-3 py-2.5">
-                    <div>
-                      <div className="text-[10.5px] text-ui-tertiary">试卷</div>
-                      <div className="mt-0.5 text-[13px] font-semibold text-ui-primary">
-                        {exam.questionCount} 题
-                        <span className="ml-1 text-[11px] font-normal text-ui-tertiary">{exam.totalScore} 分</span>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10.5px] text-ui-tertiary">提交</div>
-                      <div className="mt-0.5 text-[13px] font-semibold text-ui-primary">{exam.submissionCount} 人</div>
-                    </div>
-                    <div>
-                      <div className="text-[10.5px] text-ui-tertiary">时长</div>
-                      <div className="mt-0.5 text-[13px] font-semibold text-ui-primary">{exam.durationMin} 分钟</div>
-                    </div>
-                  </div>
-
-                  {exam.submissionCount > 0 ? (
-                    <div>
-                      <div className="mb-1.5 flex items-center justify-between text-[11px] text-ui-secondary">
-                        <span>评分进度</span>
-                        <span>
-                          {exam.gradedCount} / {exam.submissionCount}
-                        </span>
-                      </div>
-                      <Progress
-                        percent={gradedRate}
-                        showInfo={false}
-                        size="small"
-                        strokeColor={gradedRate === 100 ? 'var(--ui-status-success-accent)' : 'var(--ui-action-primary)'}
-                        trailColor="var(--ui-background-muted)"
-                      />
-                    </div>
-                  ) : null}
-
-                  <div className="mt-auto flex flex-wrap items-center gap-2">
-                    {exam.status === 'draft' ? (
-                      <>
-                        <Button
-                          type="primary"
-                          size="small"
-                          onClick={() => navigate(`/teacher/exam/${exam.id}`)}
-                        >
-                          导入题目
-                        </Button>
-                        <Button size="small" danger onClick={() => removeExam(exam)}>
-                          删除
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          type="primary"
-                          size="small"
-                          onClick={() => navigate(`/teacher/exam/${exam.id}/grading`)}
-                        >
-                          批改与出分
-                        </Button>
-                        <Button size="small" onClick={() => navigate(`/teacher/exam/${exam.id}`)}>
-                          试卷详情
-                        </Button>
-                        <IconButton label="查看本场学情图表"
-                            size="small"
-                            type="text"
-                            icon={<BarChartOutlined />}
-                            onClick={() => navigate(`/teacher/analytics?examId=${exam.id}`)} />
-                      </>
-                    )}
-                  </div>
-                </Card>
-              </Col>
+                </div>
+              </Card>
             );
           })}
-        </Row>
+        </div>
       )}
-
-      <Modal
-        open={creating}
-        title="新建考试"
-        okText="创建并继续"
-        cancelText="取消"
-        confirmLoading={pending}
-        onOk={createExam}
-        onCancel={() => setCreating(false)}
-        destroyOnHidden
-      >
-        <div className="mb-4 text-[13px] text-ui-secondary">创建后导入 Word 试卷，确认题目无误再发布给学生。</div>
-        <Form form={form} layout="vertical" initialValues={{ durationMin: 60 }} requiredMark={false}>
-          <Form.Item
-            label="考试名称"
-            name="title"
-            rules={[{ required: true, message: '请填写考试名称' }, { max: 120, message: '最多 120 字' }]}
-          >
+      <Modal open={creating} title="新建考试" okText="创建并继续" cancelText="取消"
+        confirmLoading={pending} onOk={createExam} onCancel={() => { if (!pending) setCreating(false); }}
+        mask={{ closable: !pending }} keyboard={!pending} destroyOnHidden>
+        <Form form={form} layout="vertical" initialValues={{ durationMin: 60 }} requiredMark={false} disabled={pending}>
+          <Form.Item label="考试名称" name="title" rules={[{ required: true, whitespace: true, message: '请填写考试名称' }, { max: 120, message: '最多 120 字' }]}>
             <Input placeholder="例如：高一信息科技 · 第一章单元测" autoFocus />
           </Form.Item>
           <Form.Item label="说明（可选）" name="description">
-            <TextArea rows={3} placeholder="考试范围、注意事项等，学生工作台可见" maxLength={2000} />
+            <Input.TextArea rows={3} placeholder="考试范围、注意事项等，学生工作台可见" maxLength={2000} />
           </Form.Item>
-          <Form.Item label="考试时长（分钟）" name="durationMin" extra="学生开始作答后倒计时，超时自动提交。">
+          <Form.Item label="考试时长（分钟）" name="durationMin" rules={[{ required: true, message: '请填写考试时长' }]}>
             <InputNumber min={1} max={600} style={{ width: '100%' }} />
           </Form.Item>
         </Form>

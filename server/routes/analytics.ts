@@ -156,7 +156,7 @@ function loadParticipants(exam: ExamRow, classIds: number[], studentIds: number[
   const where = ["s.exam_id = ?", "s.status = 'graded'"];
   const params: Param[] = [exam.id];
   if (classIds.length) {
-    where.push(`u.class_id IN (${placeholder(classIds.length)})`);
+    where.push(`(CASE WHEN ep.student_id IS NOT NULL THEN ep.class_id ELSE u.class_id END) IN (${placeholder(classIds.length)})`);
     params.push(...classIds);
   }
   if (studentIds.length) {
@@ -165,12 +165,12 @@ function loadParticipants(exam: ExamRow, classIds: number[], studentIds: number[
   }
   return all<SubmissionRow>(
     `SELECT s.id, s.student_id, s.status, s.auto_score, s.final_score, s.submitted_at, s.graded_at,
-       u.name, u.student_no, u.class_id, c.name AS class_name
+       u.name, u.student_no, CASE WHEN ep.student_id IS NOT NULL THEN ep.class_id ELSE u.class_id END AS class_id, CASE WHEN ep.student_id IS NOT NULL THEN ep.class_name ELSE c.name END AS class_name
      FROM submissions s
      JOIN users u ON u.id = s.student_id
      LEFT JOIN classes c ON c.id = u.class_id
      WHERE ${where.join(' AND ')}
-     ORDER BY u.class_id, u.student_no, u.id`,
+     ORDER BY class_id, u.student_no, u.id`,
     ...params,
   );
 }
@@ -236,7 +236,7 @@ function buildTrend(
     const where = ["s.exam_id = ?", "s.status = 'graded'"];
     const params: Param[] = [exam.id];
     if (classIds.length) {
-      where.push(`u.class_id IN (${placeholder(classIds.length)})`);
+      where.push(`(CASE WHEN ep.student_id IS NOT NULL THEN ep.class_id ELSE u.class_id END) IN (${placeholder(classIds.length)})`);
       params.push(...classIds);
     }
     if (studentIds.length) {
@@ -246,6 +246,7 @@ function buildTrend(
     const rows = all<{ final_score: number | null; auto_score: number | null }>(
       `SELECT s.final_score, s.auto_score FROM submissions s
        JOIN users u ON u.id = s.student_id
+       LEFT JOIN exam_participants ep ON ep.exam_id = s.exam_id AND ep.student_id = s.student_id
        WHERE ${where.join(' AND ')}`,
       ...params,
     );
@@ -303,14 +304,25 @@ function analyticsPayload(
     for (const [id, rank] of rankMap(group, scoreOf)) classRanks.set(id, rank);
   }
 
-  const classList = classIds.length ? meta.classes.filter((item) => classIds.includes(item.id)) : meta.classes;
-  const candidateStudents = meta.students.filter(
+  const hasSnapshot = Boolean(get('SELECT 1 FROM exam_audiences WHERE exam_id = ?', exam.id));
+  const snapshot = hasSnapshot ? all<{ studentId: number; classId: number | null; className: string | null }>(
+    'SELECT student_id AS studentId, class_id AS classId, class_name AS className FROM exam_participants WHERE exam_id = ?', exam.id,
+  ) : [];
+  const snapshotClasses = new Map<number, ClassInfo>();
+  for (const student of snapshot) {
+    if (student.classId == null) continue;
+    const entry = snapshotClasses.get(student.classId);
+    if (entry) entry.studentCount++;
+    else snapshotClasses.set(student.classId, { id: student.classId, name: student.className ?? `班级 ${student.classId}`, grade: null, studentCount: 1 });
+  }
+  const classesForExam = hasSnapshot ? [...snapshotClasses.values()] : meta.classes;
+  const classList = classIds.length ? classesForExam.filter((item) => classIds.includes(item.id)) : classesForExam;
+  const candidateStudents = (hasSnapshot ? snapshot.map((student) => ({ id: student.studentId, classId: student.classId })) : meta.students).filter(
     (student) => !classIds.length || (student.classId != null && classIds.includes(student.classId)),
   );
   const expected = studentIds.length
     ? candidateStudents.filter((student) => studentIds.includes(student.id)).length
     : candidateStudents.length;
-
   const students: StudentAnalytics[] = participants.map((row) => {
     const answers = questions.map((question) => answerMap.get(answerKey(row.id, question.id)));
     return {

@@ -116,6 +116,7 @@ export function ExamStatusTag({ status }: { status: ExamStatus }) {
 }
 
 const SUB_META: Record<SubmissionStatus, { label: string; tone: PillTone }> = {
+  discarded: { label: '未收卷', tone: 'gray' },
   in_progress: { label: '作答中', tone: 'gray' },
   submitted: { label: '待批改', tone: 'amber' },
   grading: { label: '自动评分中', tone: 'blue' },

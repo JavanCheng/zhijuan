@@ -38,11 +38,12 @@ import { api, del, patch, post } from '../../api';
 import type {
   ManagedClass,
   ManagedStudent,
-  RosterImportResult,
+
   RosterOverview,
 } from '../../../shared/types';
 import { EmptyState, IconButton, Page, PageHeader, Pill, StatCard } from '../../ui';
 import { formatDate } from '../../format';
+import type { RosterPreviewResult } from '../../../shared/roster-preview';
 
 const { Text } = Typography;
 
@@ -76,7 +77,10 @@ export function TeacherClasses() {
 
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<RosterImportResult | null>(null);
+  const [importResult, setImportResult] = useState<RosterPreviewResult | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importApplied, setImportApplied] = useState(false);
+  const [importError, setImportError] = useState('');
 
   const load = useCallback(async (isCurrent: () => boolean = () => true) => {
     try {
@@ -252,44 +256,68 @@ export function TeacherClasses() {
     });
   }
 
-  function openImport() {
+  function resetImport() {
     setImportResult(null);
+    setImportFile(null);
+    setImportApplied(false);
+    setImportError('');
+  }
+
+  function openImport() {
+    resetImport();
     setImportOpen(true);
   }
 
   function closeImport() {
+    if (importing) return;
     setImportOpen(false);
-    setImportResult(null);
+    resetImport();
   }
 
-  const uploadProps: UploadProps = {    accept: '.xlsx,.xls,.csv',
-    showUploadList: false,
-    maxCount: 1,
-    disabled: importing,
+  async function confirmImport() {
+    if (!importFile || !importResult?.previewToken || importing) return;
+    const form = new FormData();
+    form.append('file', importFile);
+    setImporting(true);
+    setImportError('');
+    try {
+      const response = await fetch('/api/teacher/students/import', {
+        method: 'POST', body: form, headers: { 'X-Roster-Preview': importResult.previewToken }, credentials: 'same-origin',
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        if (response.status === 409) setImportResult(null);
+        throw new Error(payload.error ?? '确认导入失败');
+      }
+      const result = payload as RosterPreviewResult;
+      setImportResult(result);
+      if (result.ok) {
+        setImportApplied(true);
+        void message.success('名册导入完成');
+        await load();
+      }
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : '确认导入失败');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  const uploadProps: UploadProps = {
+    accept: '.xlsx,.xls,.csv', showUploadList: false, maxCount: 1, disabled: importing,
     customRequest: async ({ file, onSuccess, onError }) => {
+      const currentFile = file as File;
       const form = new FormData();
-      form.append('file', file as File);
+      form.append('file', currentFile);
+      resetImport();
       setImporting(true);
-      setImportResult(null);
       try {
-        const result = await api<RosterImportResult>('/api/teacher/students/import', {
-          method: 'POST',
-          body: form,
-        });
+        const result = await api<RosterPreviewResult>('/api/teacher/students/import/preview', { method: 'POST', body: form });
+        setImportFile(currentFile);
         setImportResult(result);
-        if (result.ok) {
-          message.success(
-            `导入完成：新建 ${result.summary.studentsCreated} 人，更新 ${result.summary.studentsUpdated} 人`,
-          );
-          setClassFilter('all');
-          setStatusFilter('all');
-          setKeyword('');
-          await load();
-        }
         onSuccess?.({});
       } catch (err) {
-        const text = err instanceof Error ? err.message : '导入失败';
-        message.error(text);
+        setImportError(err instanceof Error ? err.message : '预检失败');
         onError?.(err as Error);
       } finally {
         setImporting(false);
@@ -695,6 +723,8 @@ export function TeacherClasses() {
         title="导入班级与学生"
         width="min(720px, 94vw)"
         onCancel={closeImport}
+        closable={!importing}
+        mask={{ closable: !importing }}
         footer={[
           <Button
             key="template"
@@ -704,39 +734,43 @@ export function TeacherClasses() {
           >
             下载模板
           </Button>,
-          <Button key="close" type="primary" onClick={closeImport}>
-            完成
+          <Button key="close" type={importApplied ? "primary" : "default"} disabled={importing} onClick={closeImport}>
+            {importApplied ? '完成' : '取消'}
           </Button>,
+          ...(!importApplied ? [<Button key="confirm" type="primary" loading={importing}
+            disabled={!importResult?.ok || !importResult.previewToken}
+            onClick={() => void confirmImport()}>确认导入</Button>] : []),
         ]}
         destroyOnHidden
       >
         <div className="mb-4 rounded-xl bg-ui-subtle px-4 py-3 text-[12px] leading-6 text-ui-secondary">
           支持 <strong>.xlsx / .xls / .csv</strong>。表头需包含
           <strong> 班级、姓名、学号 </strong>；也支持每个工作表就是一个班级，表头写姓名和学号即可。
-          学号重复会自动更新姓名与班级，同一文件内学号不能重复。
+          按学号核对新旧名册，同一文件内学号不能重复；未列出的学生不受影响。
         </div>
 
         <Upload.Dragger {...uploadProps} style={{ background: 'var(--ui-surface-subtle)' }}>
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
-          <p className="ant-upload-text">{importing ? '正在导入…' : '把名单文件拖到这里，或点击选择'}</p>
-          <p className="ant-upload-hint">导入成功后可直接使用姓名 + 学号登录；已停用的学生会被重新启用。</p>
+          <p className="ant-upload-text">{importing ? '正在处理…' : importFile ? `${importFile.name} · 点击更换文件` : '把名单文件拖到这里，或点击选择'}</p>
+          <p className="ant-upload-hint">先逐行预检；只有点「确认导入」才会修改名册。</p>
         </Upload.Dragger>
 
+        {importError ? <Alert className="mt-4" showIcon type="error" title={importError} /> : null}
         {importResult ? (
           <div className="mt-4">
             <Alert
-              type={importResult.ok ? 'success' : 'error'}
+              type={importResult.ok ? (importApplied ? 'success' : 'info') : 'error'}
               showIcon
               message={
                 importResult.ok
-                  ? `导入完成：读取 ${importResult.summary.rowsRead} 行，新建 ${importResult.summary.studentsCreated} 人，更新 ${importResult.summary.studentsUpdated} 人`
+                  ? `${importApplied ? '已导入' : '预检通过，尚未写入'}：读取 ${importResult.summary.rowsRead} 行`
                   : `导入未执行：发现 ${importResult.errors.length} 处错误`
               }
               description={
                 importResult.ok
-                  ? `新建班级 ${importResult.summary.classesCreated} 个；重新启用 ${importResult.summary.studentsReactivated} 人。`
+                  ? `新建班级 ${importResult.summary.classesCreated} 个 · 新增 ${importResult.summary.studentsCreated} 人 · 改名 ${importResult.summary.studentsUpdated} 人 · 转班 ${importResult.summary.studentsTransferred} 人 · 重新启用 ${importResult.summary.studentsReactivated} 人 · 无变化 ${importResult.summary.studentsUnchanged} 人。改名、转班和重新启用可能涉及同一学生。`
                   : '请修正文件后重新导入，本次没有写入任何数据。'
               }
             />

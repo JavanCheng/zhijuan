@@ -47,6 +47,20 @@ CREATE TABLE IF NOT EXISTS exams (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS exam_audiences (
+  exam_id INTEGER PRIMARY KEY REFERENCES exams(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('school', 'classes')),
+  class_ids_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS exam_participants (
+  exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+  student_id INTEGER NOT NULL,
+  class_id INTEGER,
+  class_name TEXT,
+  PRIMARY KEY (exam_id, student_id)
+);
+
 CREATE TABLE IF NOT EXISTS questions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,

@@ -465,6 +465,7 @@ export function parseLegacyBlocks(blocks: Block[], warningCount = 0): ImportResu
 export interface ImportFile {
   buffer: Buffer;
   filename: string;
+  role?: 'paper' | 'answer';
 }
 
 const ANSWER_FILE_RE = /答案|参考|answer|key/i;
@@ -479,7 +480,10 @@ export async function parseExamDocx(files: ImportFile[]): Promise<ImportResult> 
 
   let paper = files[0];
   let answer: ImportFile | null = null;
-  if (files.length > 1) {
+  if (files.some((file) => file.role)) {
+    paper = files.find((file) => file.role === 'paper') ?? files[0];
+    answer = files.find((file) => file.role === 'answer') ?? null;
+  } else if (files.length > 1) {
     const answerIndex = files.findIndex((f) => ANSWER_FILE_RE.test(f.filename));
     if (answerIndex >= 0) {
       answer = files[answerIndex];

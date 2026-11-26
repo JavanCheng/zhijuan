@@ -79,6 +79,10 @@
 
 ### 教师端
 
+发布草稿考试时，先选择应考班级，也可以显式选择全校启用学生。系统会在发布时固定应考名单。结束考试时可按已保存答案收卷，或将未提交的草稿排除在成绩之外；考试结束并完成评分与人工复核后才能发布成绩。旧版已发布考试保留原访问范围。
+
+名册导入须先预检再确认；学情看板可按当前筛选导出 CSV。可通过 `pnpm exec tsx scripts/exam-lifecycle-check.ts` 和 `pnpm exec tsx scripts/roster-preview-check.ts` 验证接口；构建后使用 `node scripts/exam-lifecycle-ui-check.mjs` 验证浏览器班级发布流程。
+
 | 能力 | 说明 |
 | --- | --- |
 | 班级管理 | 新建 / 重命名 / 删除班级；Excel、CSV 或手动添加学生；支持编辑、停用、删除与恢复登录 |

@@ -90,7 +90,7 @@ try {
   form.append('file', new Blob([fs.readFileSync(ANSWER)]), path.basename(ANSWER));
   const parsed = await api('POST', `/teacher/exams/${exam.id}/import`, form, true);
   await api('PUT', `/teacher/exams/${exam.id}/questions`, JSON.parse(JSON.stringify({ questions: parsed.questions, sections: parsed.sections })));
-  await api('POST', `/teacher/exams/${exam.id}/publish`);
+  await api('POST', `/teacher/exams/${exam.id}/publish`, { audience: { type: 'school' } });
 
   // 学生 1：作答并提交（用于批改台/成绩页截图）
   cookie = '';
@@ -116,13 +116,25 @@ try {
     await new Promise((r) => setTimeout(r, 400));
   }
   cookie = teacherCookie;
+  await api('POST', `/teacher/exams/${exam.id}/close`, { action: 'collect' });
+  const review = await api('GET', `/teacher/submissions/${page1.submission.id}`);
+  for (const answer of review.answers) {
+    const question = review.questions.find((q) => q.id === answer.questionId);
+    if (answer.finalScore == null && (question.needsManual || question.type === 'short' || answer.autoScore == null || answer.autoDetail?.needsManual || answer.autoDetail?.runtimeError || (question.type === 'code' && answer.autoScore < question.score))) {
+      await api('PATCH', `/teacher/answers/${answer.id}`, { finalScore: answer.autoScore ?? 0 });
+    }
+  }
   await api('POST', `/teacher/exams/${exam.id}/publish-results`, { published: true });
+
+  const activeExam = await api('POST', '/teacher/exams', { title: '真实试卷答题预览', durationMin: 60 });
+  await api('PUT', `/teacher/exams/${activeExam.id}/questions`, { questions: parsed.questions, sections: parsed.sections });
+  await api('POST', `/teacher/exams/${activeExam.id}/publish`, { audience: { type: 'school' } });
 
   // 学生 2：未提交（用于答题页截图）
   cookie = '';
   await api('POST', '/auth/student/login', { name: '王梓萱', studentNo: '20250302' });
   const student2Cookie = cookie;
-  const page2 = await api('GET', `/student/exams/${exam.id}`);
+  const page2 = await api('GET', `/student/exams/${activeExam.id}`);
   await api('PUT', `/student/submissions/${page2.submission.id}/draft`, {
     answers: { [page2.questions[0].id]: { key: 'C' } },
   });
@@ -162,7 +174,7 @@ try {
   const student2Ctx = await contextWithCookie(browser, student2Cookie);
   const s2 = await student2Ctx.newPage();
   s2.setDefaultTimeout(20000);
-  await s2.goto(`${BASE}/student/exam/${exam.id}`, { waitUntil: 'load' });
+  await s2.goto(`${BASE}/student/exam/${activeExam.id}`, { waitUntil: 'load' });
   await shot(s2, '04-student-exam.png');
 
   const student1Ctx = await contextWithCookie(browser, student1Cookie);

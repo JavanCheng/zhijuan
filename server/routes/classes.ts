@@ -1,14 +1,15 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { all, get, nowIso, run, tx } from '../db.ts';
 import { audit, HttpError, requireTeacher } from '../http.ts';
 import { hashPassword } from '../password.ts';
-import { buildRosterTemplate, parseRosterWorkbook } from '../import/students.ts';
+import { buildRosterTemplate, parseRosterWorkbook, type ParsedRosterRow } from '../import/students.ts';
+import type { RosterPreviewResult, RosterPreviewSummary } from '../../shared/roster-preview.ts';
 import type {
   ManagedClass,
   ManagedStudent,
-  RosterImportResult,
+
   RosterIssue,
   RosterOverview,
 } from '../../shared/types.ts';
@@ -31,13 +32,15 @@ const studentUpdateSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-function emptySummary() {
+function emptySummary(): RosterPreviewSummary {
   return {
     rowsRead: 0,
     classesCreated: 0,
     studentsCreated: 0,
     studentsUpdated: 0,
     studentsReactivated: 0,
+    studentsTransferred: 0,
+    studentsUnchanged: 0,
   };
 }
 
@@ -310,116 +313,91 @@ export async function classRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, deleted: true };
   });
 
-  app.post('/teacher/students/import', async (req) => {
-    const user = requireTeacher(req);
-    if (!req.isMultipart()) throw new HttpError(400, '请上传 .xlsx、.xls 或 .csv 文件');
-    const file = await req.file();
-    if (!file) throw new HttpError(400, '没有收到文件');
-    const filename = file.filename ?? '';
-    if (!/\.(xlsx|xls|csv)$/i.test(filename)) throw new HttpError(400, '只支持 .xlsx、.xls 或 .csv');
-    const buffer = await file.toBuffer();
-    if (!buffer.length) throw new HttpError(400, '文件为空');
-    if (buffer.length > 10 * 1024 * 1024) throw new HttpError(413, '文件不能超过 10MB');
+  app.post('/teacher/students/import/preview', (req) => processImport(req, false));
+  app.post('/teacher/students/import', (req) => processImport(req, true));
+}
 
-    const parsed = parseRosterWorkbook(buffer);
-    if (parsed.errors.length) {
-      return {
-        ok: false,
-        summary: emptySummary(),
-        errors: parsed.errors,
-        warnings: parsed.warnings,
-      } satisfies RosterImportResult;
+type ExistingStudent = { id: number; name: string; student_no: string; class_id: number | null; is_active: number };
+const previewKey = randomBytes(32);
+const previewLifetime = 15 * 60_000;
+
+function planImport(rows: ParsedRosterRow[], sourceWarnings: RosterIssue[]) {
+  const classes = new Map(all<{ id: number; name: string }>('SELECT id, name FROM classes').map(({ id, name }) => [name, id]));
+  const classNames = new Map([...classes].map(([name, id]) => [id, name]));
+  const existing = new Map(all<ExistingStudent>(
+    "SELECT id, student_no, name, class_id, is_active FROM users WHERE role = 'student' AND student_no IS NOT NULL",
+  ).map((row) => [row.student_no, row]));
+  const newClasses = new Set<string>();
+  const summary = { ...emptySummary(), rowsRead: rows.length };
+  const warnings = [...sourceWarnings];
+  const changes = rows.map((row) => {
+    const classId = classes.get(row.className);
+    const current = existing.get(row.studentNo);
+    if (!classId) newClasses.add(row.className);
+    const renamed = current != null && current.name !== row.name;
+    const transferred = current != null && current.class_id !== (classId ?? -1);
+    const activated = current != null && current.is_active === 0;
+    const issue = (message: string) => warnings.push({ sheet: row.sheet, row: row.row, level: 'warning', message });
+    if (!current) summary.studentsCreated++;
+    else {
+      if (renamed) { summary.studentsUpdated++; issue(`学号 ${row.studentNo}：姓名「${current.name}」改为「${row.name}」`); }
+      if (transferred) { summary.studentsTransferred++; issue(`学号 ${row.studentNo}：从「${classNames.get(current.class_id ?? -1) ?? '未分班'}」调至「${row.className}」`); }
+      if (activated) { summary.studentsReactivated++; issue(`学号 ${row.studentNo}：将重新启用登录`); }
+      if (!renamed && !transferred && !activated) summary.studentsUnchanged++;
     }
-
-    const warnings: RosterIssue[] = [...parsed.warnings];
-    let classesCreated = 0;
-    let studentsCreated = 0;
-    let studentsUpdated = 0;
-    let studentsReactivated = 0;
-    // 学生登录不校验密码，导入时复用同一个随机散列，避免大名单反复 scrypt
-    const importedPasswordHash = hashPassword(randomBytes(24).toString('hex'));
-
-    tx(() => {
-      const classes = new Map(
-        all<{ id: number; name: string }>('SELECT id, name FROM classes').map((row) => [row.name, row.id]),
-      );
-      let maxSort = get<{ value: number | null }>('SELECT MAX(sort_order) AS value FROM classes')?.value ?? 0;
-      const existing = new Map(
-        all<{
-          id: number;
-          student_no: string;
-          name: string;
-          class_id: number | null;
-          is_active: number;
-        }>(
-          "SELECT id, student_no, name, class_id, is_active FROM users WHERE role = 'student' AND student_no IS NOT NULL",
-        ).map((row) => [row.student_no, row]),
-      );
-
-      for (const row of parsed.rows) {
-        let classId = classes.get(row.className);
-        if (classId == null) {
-          maxSort += 1;
-          const inserted = run(
-            'INSERT INTO classes (name, grade, sort_order, created_at) VALUES (?, NULL, ?, ?)',
-            row.className,
-            maxSort,
-            nowIso(),
-          );
-          classId = inserted.lastInsertRowid;
-          classes.set(row.className, classId);
-          classesCreated += 1;
-        }
-
-        const current = existing.get(row.studentNo);
-        if (current) {
-          if (current.name !== row.name) {
-            warnings.push({
-              sheet: row.sheet,
-              row: row.row,
-              level: 'warning',
-              message: `学号 ${row.studentNo} 姓名由「${current.name}」更新为「${row.name}」`,
-            });
-          }
-          run(
-            'UPDATE users SET name = ?, class_id = ?, is_active = 1 WHERE id = ?',
-            row.name,
-            classId,
-            current.id,
-          );
-          if (!current.is_active) studentsReactivated += 1;
-          studentsUpdated += 1;
-        } else {
-          const inserted = run(
-            `INSERT INTO users (username, password_hash, name, role, student_no, class_id, is_active, created_at)
-             VALUES (?, ?, ?, 'student', ?, ?, 1, ?)`,
-            uniqueUsername(`stu_${row.studentNo}`),
-            importedPasswordHash,
-            row.name,
-            row.studentNo,
-            classId,
-            nowIso(),
-          );
-          existing.set(row.studentNo, {
-            id: inserted.lastInsertRowid,
-            student_no: row.studentNo,
-            name: row.name,
-            class_id: classId,
-            is_active: 1,
-          });
-          studentsCreated += 1;
-        }
-      }
-    });
-
-    const summary = {
-      rowsRead: parsed.rows.length,
-      classesCreated,
-      studentsCreated,
-      studentsUpdated,
-      studentsReactivated,
-    };
-    audit(user.id, 'roster', 0, 'import', null, summary);
-    return { ok: true, summary, errors: [], warnings } satisfies RosterImportResult;
+    return { row, current, classId, previousClassName: classNames.get(current?.class_id ?? -1), renamed, transferred, activated };
   });
+  summary.classesCreated = newClasses.size;
+  return { classes, newClasses, summary, warnings, changes };
+}
+
+function signPreview(expires: number, userId: number, fileHash: string, snapshot: unknown): string {
+  const signature = createHmac('sha256', previewKey).update(JSON.stringify([expires, userId, fileHash, snapshot])).digest('hex');
+  return `${expires}.${signature}`;
+}
+
+async function processImport(req: import('fastify').FastifyRequest, confirm: boolean): Promise<RosterPreviewResult> {
+  const user = requireTeacher(req);
+  if (!req.isMultipart()) throw new HttpError(400, '请上传 .xlsx、.xls 或 .csv 文件');
+  const file = await req.file();
+  if (!file) throw new HttpError(400, '没有收到文件');
+  if (!/\.(xlsx|xls|csv)$/i.test(file.filename)) throw new HttpError(400, '只支持 .xlsx、.xls 或 .csv');
+  const buffer = await file.toBuffer();
+  if (!buffer.length) throw new HttpError(400, '文件为空');
+  if (buffer.length > 10 * 1024 * 1024) throw new HttpError(413, '文件不能超过 10MB');
+  const parsed = parseRosterWorkbook(buffer);
+  if (parsed.errors.length) return { ok: false, summary: { ...emptySummary(), rowsRead: parsed.rows.length }, errors: parsed.errors, warnings: parsed.warnings };
+  const fileHash = createHash('sha256').update(buffer).digest('hex');
+  const execute = (): RosterPreviewResult => {
+    const plan = planImport(parsed.rows, parsed.warnings);
+    const snapshot = plan.changes.map(({ current, classId, previousClassName }) => [current, classId, previousClassName]);
+    const result: RosterPreviewResult = { ok: true, summary: plan.summary, errors: [], warnings: plan.warnings };
+    if (!confirm) {
+      return { ...result, previewToken: signPreview(Date.now() + previewLifetime, user.id, fileHash, snapshot) };
+    }
+    const token = req.headers['x-roster-preview'];
+    const expires = typeof token === 'string' && /^\d{13}\.[a-f0-9]{64}$/.test(token) ? Number(token.split('.')[0]) : 0;
+    if (!expires || expires < Date.now() || typeof token !== 'string') throw new HttpError(409, '预检已过期或缺失，请重新选择文件预检');
+    const expected = signPreview(expires, user.id, fileHash, snapshot);
+    if (!timingSafeEqual(Buffer.from(token), Buffer.from(expected))) throw new HttpError(409, '文件或相关名册已变更，请重新预检并确认');
+
+    let maxSort = get<{ value: number | null }>('SELECT MAX(sort_order) AS value FROM classes')?.value ?? 0;
+    for (const name of plan.newClasses) {
+      const inserted = run('INSERT INTO classes (name, grade, sort_order, created_at) VALUES (?, NULL, ?, ?)', name, ++maxSort, nowIso());
+      plan.classes.set(name, inserted.lastInsertRowid);
+    }
+    const passwordHash = plan.summary.studentsCreated ? hashPassword(randomBytes(24).toString('hex')) : '';
+    for (const { row, current, renamed, transferred, activated } of plan.changes) {
+      const classId = plan.classes.get(row.className)!;
+      if (!current) {
+        run(`INSERT INTO users (username, password_hash, name, role, student_no, class_id, is_active, created_at)
+          VALUES (?, ?, ?, 'student', ?, ?, 1, ?)`, uniqueUsername(`stu_${row.studentNo}`), passwordHash, row.name, row.studentNo, classId, nowIso());
+      } else if (renamed || transferred || activated) {
+        run('UPDATE users SET name = ?, class_id = ?, is_active = 1 WHERE id = ?', row.name, classId, current.id);
+      }
+    }
+    audit(user.id, 'roster', 0, 'import', null, result.summary);
+    return result;
+  };
+  return confirm ? tx(execute) : execute();
 }

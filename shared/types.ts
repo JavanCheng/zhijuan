@@ -17,7 +17,7 @@ export const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
 export const AUTO_GRADED: QuestionType[] = ['single', 'multiple', 'truefalse', 'fill', 'code'];
 
 export type ExamStatus = 'draft' | 'published' | 'closed';
-export type SubmissionStatus = 'in_progress' | 'submitted' | 'grading' | 'graded';
+export type SubmissionStatus = 'in_progress' | 'submitted' | 'grading' | 'graded' | 'discarded';
 
 export interface Option {
   key: string;
@@ -123,7 +123,37 @@ export interface ExamSummary {
   createdAt: string;
 }
 
+export type ExamAudienceInput = { type: 'classes'; classIds: number[] } | { type: 'school' };
+
+export interface ExamAudience {
+  type: 'legacy' | 'school' | 'classes';
+  classIds: number[];
+  studentCount: number;
+}
+
+export interface ExamProgress {
+  expected: number | null;
+  notStarted: number | null;
+  inProgress: number;
+  submitted: number;
+  grading: number;
+  failed: number;
+  needsReview: number;
+  finalized: number;
+}
+
+export interface ExamListItemTeacher extends ExamSummary {
+  audience: ExamAudience | null;
+  progress: ExamProgress;
+  submissionCount: number;
+  gradedCount: number;
+  pendingCount: number;
+  reviewCount: number;
+}
+
 export interface ExamDetailTeacher extends ExamSummary {
+  audience: ExamAudience | null;
+  progress: ExamProgress;
   questions: QuestionTeacher[];
   sections: QuestionSection[];
   submissionCount: number;
@@ -198,6 +228,7 @@ export interface SubmissionRow {
   finalScore: number | null;
   submittedAt: string | null;
   answered: number;
+  gradingFailed?: boolean;
   needsReview: number;
   questionCount: number;
 }

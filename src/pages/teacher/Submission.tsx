@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   App as AntApp,
   Button,
@@ -33,7 +33,13 @@ export function TeacherSubmission() {
   const { id } = useParams();
   const submissionId = Number(id);
   const navigate = useNavigate();
+  const location = useLocation();
+  const gradingSearch = typeof location.state?.gradingSearch === 'string' && location.state.gradingSearch.startsWith('?')
+    ? location.state.gradingSearch : '';
   const { message } = AntApp.useApp();
+  const queue: number[] = Array.isArray(location.state?.reviewQueue) ? location.state.reviewQueue.filter(Number.isSafeInteger) : [];
+  const index = queue.indexOf(submissionId);
+  const nextId = index < 0 ? undefined : queue[index + 1];
 
   const [data, setData] = useState<SubmissionDetailTeacher | null>(null);
   const [drafts, setDrafts] = useState<Record<number, Draft>>({});
@@ -63,6 +69,7 @@ export function TeacherSubmission() {
 
   useEffect(() => {
     let active = true;
+    setData(null);
     void load(() => active);
     return () => { active = false; };
   }, [load]);
@@ -105,7 +112,8 @@ export function TeacherSubmission() {
         comment: draft.comment.trim() || null,
       });
       message.success(`第 ${question.seq} 题已保存`);
-      await load();
+      setData((current) => current && { ...current, answers: current.answers.map((item) => item.id === answer.id
+        ? { ...item, finalScore: value, comment: draft.comment.trim() || null } : item) });
     } catch (err) {
       void message.error(err instanceof Error ? err.message : '保存失败');
     } finally {
@@ -143,11 +151,19 @@ export function TeacherSubmission() {
             type="link"
             icon={<ArrowLeftOutlined />}
             className="!px-0"
-            onClick={() => navigate(`/teacher/exam/${data.examId}/grading`)}
+            onClick={() => navigate(`/teacher/exam/${data.examId}/grading${gradingSearch}`)}
           >
             返回批改列表
           </Button>
         }
+        extra={nextId ? <Button onClick={() => {
+          const unsaved = data.answers.some((a) => {
+            const draft = drafts[a.questionId];
+            return draft && (draft.score !== String(a.finalScore ?? a.autoScore ?? 0) || draft.comment.trim() !== (a.comment ?? ''));
+          });
+          if (unsaved || savingId !== null) { void message.warning('请先保存当前答卷的修改'); return; }
+          navigate(`/teacher/submission/${nextId}`, { state: { gradingSearch, reviewQueue: queue } });
+        }}>下一份待复核</Button> : null}
         eyebrow="Review"
         title={
           <span className="flex flex-wrap items-center gap-2 [overflow-wrap:anywhere]">
@@ -417,7 +433,7 @@ export function TeacherSubmission() {
               修改分数后点「保存本题」立即生效，所有改动都会写入审计日志。
             </Text>
 
-            <Button block className="mt-3" onClick={() => navigate(`/teacher/exam/${data.examId}/grading`)}>
+            <Button block className="mt-3" onClick={() => navigate(`/teacher/exam/${data.examId}/grading${gradingSearch}`)}>
               完成，返回列表
             </Button>
           </Card>
