@@ -12,7 +12,6 @@ import {
   Spin,
   Steps,
   Table,
-  Tag,
   Typography,
   Upload,
 } from 'antd';
@@ -26,7 +25,7 @@ import {
 } from '@ant-design/icons';
 import { api, del, patch, post, put } from '../../api';
 import type { ExamDetailTeacher, ImportResult, QuestionTeacher } from '../../../shared/types';
-import { ExamStatusTag, Page, PageHeader, Pill, SectionMaterial, SectionTag, TypeTag } from '../../ui';
+import { EmptyState, ExamStatusTag, IconButton, Page, PageHeader, Pill, SectionMaterial, SectionTag, TypeTag } from '../../ui';
 import { formatAnswerSpec, scoreText, stripHtml } from '../../format';
 
 const { Text } = Typography;
@@ -53,11 +52,10 @@ export function TeacherExam() {
   const { id } = useParams();
   const examId = Number(id);
   const navigate = useNavigate();
-  const { modal } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
 
   const [exam, setExam] = useState<ExamDetailTeacher | null>(null);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -65,23 +63,27 @@ export function TeacherExam() {
   // 已选文件（试卷 + 参考答案）；用原始 File 作为唯一数据源，避免依赖 antd 的 originFileObj
   const [picked, setPicked] = useState<File[]>([]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isCurrent: () => boolean = () => true) => {
     try {
       const data = await api<ExamDetailTeacher>(`/api/teacher/exams/${examId}`);
+      if (!isCurrent()) return;
       setExam(data);
-      setError('');
+      setLoadFailed(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      if (!isCurrent()) return;
+      setLoadFailed(true);
+      void message.error({ key: 'teacher-exam-load', content: err instanceof Error ? err.message : '加载失败' });
     }
-  }, [examId]);
+  }, [message, examId]);
 
   useEffect(() => {
-    void load();
+    let active = true;
+    void load(() => active);
+    return () => { active = false; };
   }, [load]);
 
   async function runImport(body: FormData | { sample: true }) {
     setImporting(true);
-    setError('');
     try {
       const result = await api<ImportResult>(`/api/teacher/exams/${examId}/import`, {
         method: 'POST',
@@ -90,7 +92,7 @@ export function TeacherExam() {
       setImportResult(result);
       setImportOpen(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '解析失败');
+      void message.error(err instanceof Error ? err.message : '解析失败');
     } finally {
       setImporting(false);
     }
@@ -135,10 +137,10 @@ export function TeacherExam() {
       setImportOpen(false);
       setImportResult(null);
       setPicked([]);
-      setNotice('题目已导入，请核对分值后发布考试');
+      void message.success('题目已导入，请核对分值后发布考试');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '导入失败');
+      void message.error(err instanceof Error ? err.message : '导入失败');
     } finally {
       setBusy(false);
     }
@@ -148,10 +150,10 @@ export function TeacherExam() {
     setBusy(true);
     try {
       await post(`/api/teacher/exams/${examId}/publish`);
-      setNotice('考试已发布，学生工作台现在可以看到并作答');
+      void message.success('考试已发布，学生工作台现在可以看到并作答');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '发布失败');
+      void message.error(err instanceof Error ? err.message : '发布失败');
     } finally {
       setBusy(false);
     }
@@ -164,8 +166,13 @@ export function TeacherExam() {
       okText: '结束考试',
       cancelText: '取消',
       onOk: async () => {
-        await post(`/api/teacher/exams/${examId}/close`);
-        await load();
+        try {
+          await post(`/api/teacher/exams/${examId}/close`);
+          await load();
+        } catch (err) {
+          void message.error(err instanceof Error ? err.message : '结束考试失败');
+          throw err;
+        }
       },
     });
   }
@@ -178,8 +185,13 @@ export function TeacherExam() {
       okButtonProps: { danger: true },
       cancelText: '取消',
       onOk: async () => {
-        await del(`/api/teacher/exams/${examId}`);
-        navigate('/teacher', { replace: true });
+        try {
+          await del(`/api/teacher/exams/${examId}`);
+          navigate('/teacher', { replace: true });
+        } catch (err) {
+          void message.error(err instanceof Error ? err.message : '删除考试失败');
+          throw err;
+        }
       },
     });
   }
@@ -189,7 +201,7 @@ export function TeacherExam() {
       await patch(`/api/teacher/questions/${question.id}`, { score: value });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存分值失败');
+      void message.error(err instanceof Error ? err.message : '保存分值失败');
     }
   }
 
@@ -205,7 +217,7 @@ export function TeacherExam() {
           await del(`/api/teacher/questions/${question.id}`);
           await load();
         } catch (err) {
-          setError(err instanceof Error ? err.message : '删除失败');
+          void message.error(err instanceof Error ? err.message : '删除失败');
         }
       },
     });
@@ -214,7 +226,7 @@ export function TeacherExam() {
   if (!exam) {
     return (
       <Page>
-        {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
+        {loadFailed ? <EmptyState title="试卷详情暂不可用" action={<Button onClick={() => void load()}>重试</Button>} /> : <Spin />}
       </Page>
     );
   }
@@ -240,7 +252,7 @@ export function TeacherExam() {
       width: 104,
       render: (_, q) => {
         const section = q.sectionIndex != null ? exam.sections[q.sectionIndex] : undefined;
-        return section ? <SectionTag section={section} /> : <span className="text-[12px] text-[#98a1b3]">—</span>;
+        return section ? <SectionTag section={section} /> : <span className="text-[12px] text-ui-tertiary">—</span>;
       },
     },
     { title: '题型', dataIndex: 'type', width: 88, render: (_, q) => <TypeTag type={q.type} /> },
@@ -248,14 +260,14 @@ export function TeacherExam() {
       title: '题干',
       dataIndex: 'stemHtml',
       render: (_, q) => (
-        <div className="max-w-[520px] text-[13.5px] leading-6 text-[#39445c]">{stripHtml(q.stemHtml).slice(0, 90)}</div>
+        <div className="max-w-[520px] [overflow-wrap:anywhere] text-[13.5px] leading-6 text-ui-primary">{stripHtml(q.stemHtml).slice(0, 90)}</div>
       ),
     },
     {
       title: '答案 / 测试点',
       width: 170,
       render: (_, q) => (
-        <Text type="secondary" style={{ fontSize: 12.5, whiteSpace: 'pre-wrap' }}>
+        <Text type="secondary" style={{ fontSize: 12.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
           {q.type === 'code'
             ? `${q.testCases.length} 个测试点`
             : q.type === 'short'
@@ -273,8 +285,9 @@ export function TeacherExam() {
       title: '',
       width: 56,
       render: (_, q) => (
-        <Button
+        <IconButton
           type="text"
+          label={`删除第 ${q.seq} 题`}
           danger
           size="small"
           disabled={locked}
@@ -328,8 +341,6 @@ export function TeacherExam() {
         }
       />
 
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
-      {notice ? <Alert type="success" showIcon message={notice} className="mb-4" closable onClose={() => setNotice('')} /> : null}
 
       <Card className="mb-5" styles={{ body: { padding: '18px 22px' } }}>
         <Steps
@@ -353,13 +364,13 @@ export function TeacherExam() {
           </Button>
         }
       >
-        <p className="mb-4 text-[12.5px] leading-6 text-[#7b86a0]">
+        <p className="mb-4 text-[12.5px] leading-6 text-ui-secondary">
           一次可上传两份 docx：<strong>试卷</strong> + <strong>参考答案</strong>（文件名含「答案/参考」的会被识别为参考答案）。
           系统先给出解析预览，确认无误再写入试卷。
           {locked ? ' 当前已有学生提交，题目与分值已锁定，不能重新导入。' : ''}
         </p>
 
-        <Upload.Dragger {...uploadProps} style={{ background: '#fafbff' }}>
+        <Upload.Dragger {...uploadProps} style={{ background: 'var(--ui-surface-subtle)' }}>
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
@@ -382,19 +393,17 @@ export function TeacherExam() {
           <Button size="small" loading={importing} disabled={locked} onClick={() => runImport({ sample: true })}>
             使用示例模板试导入
           </Button>
-          <span className="text-[12px] text-[#7b86a0]">示例模板包含六种题型，可用于快速体验完整流程。</span>
+          <span className="text-[12px] text-ui-secondary">示例模板包含六种题型，可用于快速体验完整流程。</span>
         </div>
       </Card>
 
       <Card
         title="题目列表"
         extra={
-          <Space size={8}>
-            {exam.sections.length ? <Tag bordered={false} color="geekblue">{exam.sections.length} 道大题</Tag> : null}
-            <Tag bordered={false}>{exam.questions.length} 题</Tag>
-            <Tag bordered={false} color="blue">
-              合计 {scoreText(exam.totalScore)} 分
-            </Tag>
+          <Space size={8} wrap>
+            {exam.sections.length ? <Pill>{exam.sections.length} 道大题</Pill> : null}
+            <Pill>{exam.questions.length} 题</Pill>
+            <Pill>合计 {scoreText(exam.totalScore)} 分</Pill>
           </Space>
         }
         styles={{ body: { padding: hasQuestions ? 0 : 24 } }}
@@ -451,20 +460,20 @@ export function TeacherExam() {
                   <div key={q.seq}>
                     {showSection && section ? <SectionMaterial section={section} defaultOpen={false} /> : null}
                     <div
-                      className={`mb-3 rounded-xl border p-3.5 ${hardError ? 'border-[#f3c4c4] bg-[#fffafa]' : 'border-[#e4e8f2]'}`}
+                      className={`mb-3 rounded-xl border p-3.5 ${hardError ? 'border-[var(--ui-status-danger-accent)] bg-[var(--ui-status-danger-bg)]' : 'border-ui-line'}`}
                     >
                       <Space size={8} wrap className="mb-2">
-                        <Tag>第 {q.seq} 题</Tag>
-                        {section ? <Tag color="geekblue">{section.title}</Tag> : null}
+                        <Pill>第 {q.seq} 题</Pill>
+                        {section ? <Pill>{section.title}</Pill> : null}
                         <TypeTag type={q.type} />
-                        <Tag color="blue">{q.score} 分</Tag>
-                        {q.needsManual ? <Tag color="gold">需人工评分</Tag> : null}
-                        {q.type === 'code' ? <Tag color="purple">{q.testCases.length} 个测试点</Tag> : null}
+                        <Pill>{q.score} 分</Pill>
+                        {q.needsManual ? <Pill tone="amber">需人工评分</Pill> : null}
+                        {q.type === 'code' ? <Pill>{q.testCases.length} 个测试点</Pill> : null}
                       </Space>
-                      <div className="whitespace-pre-wrap text-[13.5px] leading-7 text-[#39445c]">
+                      <div className="whitespace-pre-wrap [overflow-wrap:anywhere] text-[13.5px] leading-7 text-ui-primary">
                         {stripHtml(q.stemHtml).slice(0, 220)}
                       </div>
-                      <div className="mt-2 whitespace-pre-wrap text-[12px] text-[#7b86a0]">
+                      <div className="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] text-[12px] text-ui-secondary">
                         {q.type === 'code'
                           ? `语言：${q.codeSpec?.languages.join(', ') ?? 'python'}`
                           : `答案：${formatAnswerSpec(q.type, q.answer, q.options).slice(0, 160)}`}
@@ -472,9 +481,9 @@ export function TeacherExam() {
                       {q.issues.length ? (
                         <Space direction="vertical" size={4} className="mt-2">
                           {q.issues.map((issue, idx) => (
-                            <Tag key={idx} color={issue.level === 'error' ? 'red' : 'gold'}>
+                            <Pill key={idx} tone={issue.level === 'error' ? 'red' : 'amber'}>
                               {issue.level === 'error' ? '错误' : '提示'}：{issue.message}
-                            </Tag>
+                            </Pill>
                           ))}
                         </Space>
                       ) : null}

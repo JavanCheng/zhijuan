@@ -1,0 +1,12 @@
+/* ── 考试计时 ───────────────────────────────────────── */
+.exam-timer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.exam-timer.urgent {
+  color: var(--ui-status-danger-text);
+  font-weight: 600;
+}

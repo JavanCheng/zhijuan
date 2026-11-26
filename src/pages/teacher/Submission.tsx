@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Alert,
   App as AntApp,
   Button,
   Card,
@@ -14,13 +13,12 @@ import {
   Space,
   Spin,
   Statistic,
-  Tag,
   Typography,
 } from 'antd';
 import { ArrowLeftOutlined, CheckCircleFilled, CloseCircleFilled, SaveOutlined } from '@ant-design/icons';
 import { api, patch } from '../../api';
 import type { GradeDetail, QuestionTeacher, SubmissionDetailTeacher } from '../../../shared/types';
-import { Page, PageHeader, Pill, SectionMaterial, SubmissionStatusTag, TypeTag } from '../../ui';
+import { EmptyState, Page, PageHeader, Pill, SectionMaterial, SubmissionStatusTag, TypeTag } from '../../ui';
 import { formatAnswerSpec, formatDate, formatStudentAnswer, scoreText } from '../../format';
 
 const { Text } = Typography;
@@ -40,11 +38,12 @@ export function TeacherSubmission() {
   const [data, setData] = useState<SubmissionDetailTeacher | null>(null);
   const [drafts, setDrafts] = useState<Record<number, Draft>>({});
   const [savingId, setSavingId] = useState<number | null>(null);
-  const [error, setError] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isCurrent: () => boolean = () => true) => {
     try {
       const detail = await api<SubmissionDetailTeacher>(`/api/teacher/submissions/${submissionId}`);
+      if (!isCurrent()) return;
       setData(detail);
       const next: Record<number, Draft> = {};
       for (const a of detail.answers) {
@@ -54,14 +53,18 @@ export function TeacherSubmission() {
         };
       }
       setDrafts(next);
-      setError('');
+      setLoadFailed(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      if (!isCurrent()) return;
+      setLoadFailed(true);
+      void message.error({ key: 'teacher-submission-load', content: err instanceof Error ? err.message : '加载失败' });
     }
-  }, [submissionId]);
+  }, [message, submissionId]);
 
   useEffect(() => {
-    void load();
+    let active = true;
+    void load(() => active);
+    return () => { active = false; };
   }, [load]);
 
   const answerOf = (questionId: number) => data?.answers.find((a) => a.questionId === questionId);
@@ -87,16 +90,15 @@ export function TeacherSubmission() {
     const draft = drafts[question.id];
     if (!answer || !draft) return;
     if (!answer.id) {
-      setError('该题还没有答题记录（学生未作答或尚未评分）');
+      void message.warning('该题还没有答题记录（学生未作答或尚未评分）');
       return;
     }
     const value = Number(draft.score);
     if (!Number.isFinite(value) || value < 0 || value > question.score) {
-      setError(`分数需在 0 到 ${question.score} 之间`);
+      void message.warning(`分数需在 0 到 ${question.score} 之间`);
       return;
     }
     setSavingId(question.id);
-    setError('');
     try {
       await patch(`/api/teacher/answers/${answer.id}`, {
         finalScore: value,
@@ -105,32 +107,32 @@ export function TeacherSubmission() {
       message.success(`第 ${question.seq} 题已保存`);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失败');
+      void message.error(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSavingId(null);
     }
   }
 
   function jumpTo(questionId: number) {
-    document.getElementById(`question-${questionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById(`question-${questionId}`)?.scrollIntoView({ block: 'start' });
   }
 
   if (!data) {
     return (
       <Page>
-        {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
+        {loadFailed ? <EmptyState title="答卷详情暂不可用" action={<Button onClick={() => void load()}>重试</Button>} /> : <Spin />}
       </Page>
     );
   }
 
-  function questionTone(question: QuestionTeacher): string {
+  function questionTone(question: QuestionTeacher): 'neutral' | 'success' | 'warning' | 'danger' {
     const answer = answerOf(question.id);
     const draft = drafts[question.id];
     const score = draft ? Number(draft.score) : (answer?.finalScore ?? answer?.autoScore ?? 0);
-    if (!answer?.raw) return '#c7cedd';
-    if (!Number.isFinite(score) || score <= 0) return '#e86969';
-    if (score >= question.score) return '#12b886';
-    return '#f2a33c';
+    if (!answer?.raw) return 'neutral';
+    if (!Number.isFinite(score) || score <= 0) return 'danger';
+    if (score >= question.score) return 'success';
+    return 'warning';
   }
 
   return (
@@ -148,23 +150,22 @@ export function TeacherSubmission() {
         }
         eyebrow="Review"
         title={
-          <span className="flex flex-wrap items-center gap-2">
-            {data.studentName}
-            <span className="text-[13px] font-normal text-[#98a1b3]">学号 {data.studentNo}</span>
+          <span className="flex flex-wrap items-center gap-2 [overflow-wrap:anywhere]">
+            <span className="min-w-0 [overflow-wrap:anywhere]">{data.studentName}</span>
+            <span className="text-[13px] font-normal text-ui-tertiary">学号 {data.studentNo}</span>
             {data.className ? <Pill tone="teal">{data.className}</Pill> : null}
           </span>
         }
         subtitle={
           <Space size={10} wrap>
             <SubmissionStatusTag status={data.status} />
-            <span>
+            <span className="[overflow-wrap:anywhere]">
               {data.examTitle} · 提交于 {formatDate(data.submittedAt)}
             </span>
           </Space>
         }
       />
 
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" closable onClose={() => setError('')} /> : null}
 
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={17}>
@@ -186,16 +187,16 @@ export function TeacherSubmission() {
                 <Card
                   id={`question-${q.id}`}
                   className="mb-4"
-                  style={{ scrollMarginTop: 84, borderLeft: `3px solid ${tone}` }}
+                  style={{ scrollMarginTop: 84, borderLeft: `3px solid ${tone === 'neutral' ? 'var(--ui-border-strong)' : `var(--ui-status-${tone}-accent)`}` }}
                 >
                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <span className="rounded-lg bg-[#eef2ff] px-2.5 py-1 text-[12.5px] font-semibold text-[#1f3fae]">
+                  <span className="rounded-lg bg-ui-muted px-2.5 py-1 text-[12.5px] font-semibold text-ui-primary">
                     第 {q.seq} 题
                   </span>
                   <TypeTag type={q.type} />
                   {isManual ? <Pill tone="amber">需人工评分</Pill> : null}
                   {!answered ? <Pill tone="red">未作答</Pill> : null}
-                  <span className="ml-auto text-[12.5px] text-[#7b86a0]">
+                  <span className="ml-auto text-[12.5px] text-ui-secondary">
                     满分 {scoreText(q.score)} · 自动得分 {scoreText(answer?.autoScore)}
                   </span>
                 </div>
@@ -204,8 +205,8 @@ export function TeacherSubmission() {
 
                 {q.options.length ? (
                   <div className="mt-3.5">
-                    <div className="mb-1.5 text-[12px] text-[#7b86a0]">选项</div>
-                    <div className="leading-8">
+                    <div className="mb-1.5 text-[12px] text-ui-secondary">选项</div>
+                    <div className="leading-8 [overflow-wrap:anywhere]">
                       {q.options.map((o) => (
                         <div key={o.key}>
                           {o.key}. {o.text}
@@ -216,42 +217,42 @@ export function TeacherSubmission() {
                 ) : null}
 
                 <div className="mt-3.5">
-                  <div className="mb-1.5 text-[12px] text-[#7b86a0]">学生作答</div>
+                  <div className="mb-1.5 text-[12px] text-ui-secondary">学生作答</div>
                   <div className={`answer-panel ${answered ? '' : 'is-empty'} ${q.type === 'code' ? 'is-code' : ''}`}>
                     {q.type === 'code' ? answer?.raw?.code || '（未作答）' : formatStudentAnswer(q.type, answer?.raw ?? null, q.options)}
                   </div>
                 </div>
 
                 <div className="mt-3.5">
-                  <div className="mb-1.5 text-[12px] text-[#7b86a0]">参考答案</div>
+                  <div className="mb-1.5 text-[12px] text-ui-secondary">参考答案</div>
                   <div className="answer-panel">{formatAnswerSpec(q.type, q.answer, q.options)}</div>
                 </div>
 
                 {items.length ? (
                   <div className="mt-3.5">
-                    <div className="mb-1.5 text-[12px] text-[#7b86a0]">自动评分依据</div>
+                    <div className="mb-1.5 text-[12px] text-ui-secondary">自动评分依据</div>
                     <div className="grid gap-2">
                       {items.map((item, idx) => (
                         <div
                           key={idx}
-                          className={`rounded-lg border px-3 py-2 text-[12.5px] ${item.ok ? 'border-[#c7ebdd] bg-[#e7f7f0]' : 'border-[#f4d2d2] bg-[#fdeeee]'}`}
+                          className={`rounded-lg border px-3 py-2 text-[12.5px] ${item.ok ? 'border-[var(--ui-status-success-accent)] bg-[var(--ui-status-success-bg)]' : 'border-[var(--ui-status-danger-accent)] bg-[var(--ui-status-danger-bg)]'}`}
                         >
                           <div className="flex items-start gap-2">
                             {item.ok ? (
-                              <CheckCircleFilled style={{ color: '#0f9d6e', marginTop: 3 }} />
+                              <CheckCircleFilled style={{ color: 'var(--ui-status-success-accent)', marginTop: 3 }} />
                             ) : (
-                              <CloseCircleFilled style={{ color: '#d33c3c', marginTop: 3 }} />
+                              <CloseCircleFilled style={{ color: 'var(--ui-status-danger-accent)', marginTop: 3 }} />
                             )}
-                            <div className="min-w-0">
+                            <div className="min-w-0 [overflow-wrap:anywhere]">
                               <div>
                                 {item.label}　
                                 <strong>
                                   {scoreText(item.score)} / {scoreText(item.maxScore)}
                                 </strong>
-                                {item.note ? <span className="text-[#7b86a0]">　{item.note}</span> : null}
+                                {item.note ? <span className="text-ui-secondary">　{item.note}</span> : null}
                               </div>
                               {item.expected !== undefined || item.got !== undefined ? (
-                                <div className="mt-1 whitespace-pre-wrap font-mono text-[11.5px] text-[#5b6479]">
+                                <div className="mt-1 whitespace-pre-wrap font-mono text-[11.5px] text-ui-secondary">
                                   <div>期望：{item.expected ?? '—'}</div>
                                   <div>实际：{item.got ?? '—'}</div>
                                 </div>
@@ -264,10 +265,10 @@ export function TeacherSubmission() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 rounded-xl border border-[#eef1f8] bg-[#fbfcff] p-3.5">
+                <div className="mt-4 rounded-xl border border-ui-line bg-ui-subtle p-3.5">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="text-[12px] font-medium text-[#4b5670]">评分</span>
-                    <span className="text-[11.5px] text-[#98a1b3]">改动会写入审计日志</span>
+                    <span className="text-[12px] font-medium text-ui-secondary">评分</span>
+                    <span className="text-[11.5px] text-ui-tertiary">改动会写入审计日志</span>
                     <div className="ml-auto flex gap-1">
                       <Button size="small" type="text" onClick={() => setDrafts((prev) => ({ ...prev, [q.id]: { score: '0', comment: prev[q.id]?.comment ?? '' } }))}>
                         0 分
@@ -329,23 +330,23 @@ export function TeacherSubmission() {
         </Col>
 
         <Col xs={24} xl={7}>
-          <Card style={{ position: 'sticky', top: 82 }}>
+          <Card className="xl:sticky xl:top-[82px]">
             <div className="flex items-center justify-between">
-              <div className="text-[14px] font-semibold text-[#26304a]">本卷得分</div>
-              <Tag bordered={false} color="blue">
+              <div className="text-[14px] font-semibold text-ui-primary">本卷得分</div>
+              <Pill tone="gray">
                 {data.questions.length} 题
-              </Tag>
+              </Pill>
             </div>
             <Statistic
               value={totals.final}
               precision={Number.isInteger(totals.final) ? 0 : 1}
               suffix={`/ ${scoreText(data.examTotalScore)}`}
-              valueStyle={{ fontSize: 31, fontWeight: 700, color: '#1a2338' }}
+              valueStyle={{ fontSize: 31, fontWeight: 700, color: 'var(--ui-content-primary)' }}
             />
 
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#eef1f8]">
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ui-muted">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-[#6f8cf5] to-[#3358e8]"
+                className="h-full rounded-full bg-[var(--ui-action-primary)]"
                 style={{ width: `${Math.min(100, (totals.final / Math.max(1, data.examTotalScore)) * 100)}%` }}
               />
             </div>
@@ -378,34 +379,37 @@ export function TeacherSubmission() {
               showInfo={false}
             />
 
-            <div className="mt-4 mb-2 text-[11px] font-semibold tracking-wide text-[#98a1b3]">题目导航</div>
+            <div className="mt-4 mb-2 text-[11px] font-semibold tracking-wide text-ui-tertiary">题目导航</div>
             <div className="grid grid-cols-6 gap-1.5">
-              {data.questions.map((q) => (
-                <button
-                  key={q.id}
-                  type="button"
-                  title={`第 ${q.seq} 题`}
-                  onClick={() => jumpTo(q.id)}
-                  className="grid h-8 place-items-center rounded-lg border text-[11.5px] font-medium transition hover:border-[#3358e8]"
-                  style={{
-                    borderColor: `${questionTone(q)}55`,
-                    background: `${questionTone(q)}14`,
-                    color: questionTone(q),
-                  }}
-                >
-                  {q.seq}
-                </button>
-              ))}
+              {data.questions.map((q) => {
+                const tone = questionTone(q);
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    title={`第 ${q.seq} 题`}
+                    onClick={() => jumpTo(q.id)}
+                    className="grid h-8 place-items-center rounded-lg border text-[11.5px] font-medium hover:outline hover:outline-[var(--ui-border-strong)]"
+                    style={{
+                      borderColor: tone === 'neutral' ? 'var(--ui-border-default)' : `var(--ui-status-${tone}-accent)`,
+                      background: tone === 'neutral' ? 'var(--ui-surface-subtle)' : `var(--ui-status-${tone}-bg)`,
+                      color: tone === 'neutral' ? 'var(--ui-content-secondary)' : `var(--ui-status-${tone}-text)`,
+                    }}
+                  >
+                    {q.seq}
+                  </button>
+                );
+              })}
             </div>
-            <div className="mt-2 flex flex-wrap gap-3 text-[10.5px] text-[#98a1b3]">
+            <div className="mt-2 flex flex-wrap gap-3 text-[10.5px] text-ui-tertiary">
               <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-sm bg-[#12b886]" /> 满分
+                <span className="h-2 w-2 rounded-sm bg-[var(--ui-status-success-accent)]" /> 满分
               </span>
               <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-sm bg-[#f2a33c]" /> 部分分
+                <span className="h-2 w-2 rounded-sm bg-[var(--ui-status-warning-accent)]" /> 部分分
               </span>
               <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-sm bg-[#e86969]" /> 0 分
+                <span className="h-2 w-2 rounded-sm bg-[var(--ui-status-danger-accent)]" /> 0 分
               </span>
             </div>
 

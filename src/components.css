@@ -1,0 +1,58 @@
+/* Ant Design adapters: keep product layout in its owning component. */
+.ant-btn.ant-btn {
+  --ui-button-height: var(--ui-control-md);
+  height: var(--ui-button-height);
+  max-width: 100%;
+}
+.ant-btn.ant-btn-sm { --ui-button-height: var(--ui-control-sm); }
+.ant-btn.ant-btn-lg { --ui-button-height: var(--ui-control-lg); }
+.ant-btn.ui-button-xs { --ui-button-height: var(--ui-control-xs); }
+.ant-btn.ui-icon-button { flex: none; width: var(--ui-button-height); padding-inline: 0; }
+.ant-btn:not(.ant-btn-round, .ant-btn-circle) { border-radius: var(--ui-radius-md); }
+@supports (corner-shape: superellipse(1.1)) {
+  .ant-btn:not(.ant-btn-round, .ant-btn-circle) { corner-shape: superellipse(1.1); }
+}
+.ant-btn:is(.ant-btn-round, .ant-btn-circle) { corner-shape: round; }
+.ant-btn:active:not(:disabled, .ant-btn-disabled).ant-btn-variant-text { background: var(--ui-state-pressed); }
+.ant-btn.ant-btn-color-primary.ant-btn-variant-solid:not(:disabled, .ant-btn-disabled) {
+  color: var(--ui-content-on-action);
+  background: var(--ui-action-primary);
+}
+.ant-btn.ant-btn-color-primary.ant-btn-variant-solid:not(:disabled, .ant-btn-disabled):hover { background: var(--ui-action-primary-hover); }
+.ant-btn.ant-btn-color-primary.ant-btn-variant-solid:not(:disabled, .ant-btn-disabled):active { background: var(--ui-action-primary-pressed); }
+.ant-btn.ant-btn:disabled, .ant-btn.ant-btn-disabled { color: var(--ui-content-disabled); transition: none; }
+
+:where(a, button, input, textarea, select, summary, [role='tab'], [role='menuitem'], [tabindex]):focus-visible,
+.ant-btn.ant-btn:focus-visible, .ant-dropdown-menu-item.ant-dropdown-menu-item:focus-visible {
+  outline: 1px solid var(--ui-state-focus);
+  outline-offset: -2px;
+}
+.ant-btn.ant-btn-variant-solid:focus-visible { outline-color: var(--ui-content-on-action); }
+.ant-input-affix-wrapper:has(input:focus-visible),
+.ant-select:has(input:focus-visible) .ant-select-selector,
+.ant-input.ant-input:focus-visible, .ant-input-number:has(input:focus-visible) {
+  outline: 1px solid var(--ui-state-focus);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+.ant-input-affix-wrapper > .ant-input:focus-visible { outline: none; }
+.ant-modal .ant-modal-container, .ant-drawer .ant-drawer-section, .ant-dropdown .ant-dropdown-menu {
+  border: 1px solid var(--ui-border-strong);
+}
+.ant-tooltip { pointer-events: none; }
+.ant-tooltip .ant-tooltip-container { box-shadow: none; }
+.theme-control-entry.ant-btn { position: fixed; inset-block-start: 12px; inset-inline-end: 12px; z-index: 20; background: var(--ui-surface-default); border-color: var(--ui-border-strong); }
+.theme-control-entry.ant-btn:not(:disabled):hover { background: var(--ui-background-muted); }
+.ant-avatar.shell-avatar { font-size: 13px; background: var(--ui-background-muted); color: var(--ui-content-primary); }
+.ui-content-skeleton { min-width: 0; }
+
+@media (forced-colors: active) {
+  :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible,
+  .ant-btn.ant-btn:focus-visible, .ant-btn.ant-btn-variant-solid:focus-visible,
+  .ant-dropdown-menu-item.ant-dropdown-menu-item:focus-visible,
+  .ant-input-affix-wrapper:has(input:focus-visible), .ant-input.ant-input:focus-visible,
+  .ant-select:has(input:focus-visible) .ant-select-selector {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}

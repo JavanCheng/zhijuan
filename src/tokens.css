@@ -1,0 +1,194 @@
+:root {
+  color-scheme: light;
+  --ui-background-page: #fafafa;
+  --ui-background-base: #fff;
+  --ui-background-muted: #f5f5f5;
+  --ui-surface-default: #fff;
+  --ui-surface-subtle: rgb(20 31 50 / 4%);
+  --ui-content-primary: rgb(0 0 0 / 90%);
+  --ui-content-secondary: rgb(0 0 0 / 60%);
+  --ui-content-tertiary: rgb(0 0 0 / 48%);
+  --ui-content-disabled: rgb(0 0 0 / 20%);
+  --ui-content-on-action: #fff;
+  --ui-border-default: rgb(0 0 0 / 6%);
+  --ui-border-strong: rgb(0 0 0 / 8%);
+  --ui-action-primary: #252525;
+  --ui-action-primary-hover: #343434;
+  --ui-action-primary-pressed: #171717;
+  --ui-action-secondary: var(--ui-surface-subtle);
+  --ui-action-secondary-hover: rgb(20 31 50 / 8%);
+  --ui-action-secondary-pressed: rgb(20 31 50 / 10%);
+  --ui-state-hover: var(--ui-surface-subtle);
+  --ui-state-selected: var(--ui-surface-subtle);
+  --ui-state-pressed: var(--ui-action-secondary-pressed);
+  --ui-state-focus: var(--ui-content-secondary);
+  --ui-state-scrim: rgb(0 0 0 / 32%);
+  --ui-status-success-accent: #00c97c;
+  --ui-status-success-bg: #e8fff5;
+  --ui-status-success-text: #00a968;
+  --ui-status-warning-accent: #ff9500;
+  --ui-status-warning-bg: #fff8eb;
+  --ui-status-warning-text: #d97800;
+  --ui-status-danger-accent: #ff3b30;
+  --ui-status-danger-bg: #fff1f0;
+  --ui-status-danger-text: #db241c;
+  --ui-status-info-accent: #0099ff;
+  --ui-status-info-bg: #eef8ff;
+  --ui-status-info-text: #007ad6;
+
+  --ui-font-zh-fallback: "PingFang SC", "PingFangSC", "MiSans", "Microsoft YaHei", sans-serif;
+  --ui-font-body: system-ui, var(--ui-font-zh-fallback);
+  --ui-font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, var(--ui-font-zh-fallback);
+  --ui-radius-sm: 4px;
+  --ui-radius-md: 6px;
+  --ui-radius-lg: 8px;
+  --ui-radius-card: 12px;
+  --ui-radius-dialog: 16px;
+  --ui-radius-pill: 999px;
+  --ui-control-xs: 24px;
+  --ui-control-sm: 32px;
+  --ui-control-md: 36px;
+  --ui-control-lg: 40px;
+  --ui-motion-reveal: 300ms cubic-bezier(0.42, 0, 0.58, 1);
+  --ui-motion-card: 150ms ease-out;
+  --ui-motion-cover: 300ms ease-out;
+  --ui-motion-sider: 400ms cubic-bezier(0.4, 0, 0.1, 1);
+}
+
+:root:lang(en) {
+  --ui-font-body: "Google Sans Flex", system-ui, var(--ui-font-zh-fallback);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ui-background-page: #343434;
+  --ui-background-base: #252525;
+  --ui-background-muted: #252525;
+  --ui-surface-default: #343434;
+  --ui-surface-subtle: rgb(255 255 255 / 5%);
+  --ui-content-primary: #fff;
+  --ui-content-secondary: rgb(255 255 255 / 80%);
+  --ui-content-tertiary: rgb(255 255 255 / 60%);
+  --ui-content-disabled: rgb(255 255 255 / 40%);
+  --ui-content-on-action: #252525;
+  --ui-border-default: rgb(255 255 255 / 20%);
+  --ui-border-strong: rgb(255 255 255 / 30%);
+  --ui-action-primary: #ebebeb;
+  --ui-action-primary-hover: #fff;
+  --ui-action-primary-pressed: #d1d1d1;
+  --ui-action-secondary-hover: rgb(255 255 255 / 8%);
+  --ui-action-secondary-pressed: rgb(255 255 255 / 12%);
+  --ui-state-hover: var(--ui-action-secondary-hover);
+  --ui-state-selected: var(--ui-action-secondary-hover);
+  --ui-state-scrim: rgb(0 0 0 / 55%);
+  --ui-status-success-accent: #35dc9d;
+  --ui-status-success-bg: #153d30;
+  --ui-status-success-text: #83f0c7;
+  --ui-status-warning-accent: #ffb549;
+  --ui-status-warning-bg: #4a361c;
+  --ui-status-warning-text: #ffd192;
+  --ui-status-danger-accent: #ff7971;
+  --ui-status-danger-bg: #502b2a;
+  --ui-status-danger-text: #ffb4af;
+  --ui-status-info-accent: #61bfff;
+  --ui-status-info-bg: #233b4e;
+  --ui-status-info-text: #a5dcff;
+}
+
+/* Each client overrides the same semantic accent slots, not the shared neutrals/status palette. */
+:where(:root) {
+  --ui-accent-text: var(--ui-action-primary);
+  --ui-accent-surface: var(--ui-surface-default);
+  --ui-accent-selected: var(--ui-state-selected);
+  --ui-accent-line: var(--ui-border-strong);
+}
+
+[data-ui-role] {
+  --ui-accent-text: var(--ui-role-ink);
+  --ui-accent-surface: color-mix(in srgb, var(--ui-role-ink) 4%, var(--ui-surface-default));
+  --ui-accent-selected: color-mix(in srgb, var(--ui-role-ink) 12%, transparent);
+  --ui-accent-line: color-mix(in srgb, var(--ui-role-ink) 28%, transparent);
+  --ui-state-focus: var(--ui-accent-text);
+}
+
+[data-ui-role='teacher'] {
+  --ui-action-primary: #3358e8;
+  --ui-action-primary-hover: #2b4bd0;
+  --ui-action-primary-pressed: #243fae;
+  --ui-role-ink: #2848c4;
+}
+
+[data-ui-role='student'] {
+  --ui-action-primary: #0b7f5f;
+  --ui-action-primary-hover: #096e52;
+  --ui-action-primary-pressed: #075d45;
+  --ui-role-ink: #086d50;
+}
+
+[data-ui-role='admin'] {
+  --ui-action-primary: #6d4ad8;
+  --ui-action-primary-hover: #5e3bc8;
+  --ui-action-primary-pressed: #5031ac;
+  --ui-role-ink: #5b3bc0;
+}
+
+:is(:root[data-theme='dark'], :root[data-theme='dark'] *)[data-ui-role='teacher'] {
+  --ui-action-primary: #94abff;
+  --ui-action-primary-hover: #aec0ff;
+  --ui-action-primary-pressed: #829bf6;
+  --ui-role-ink: #b0c0ff;
+}
+
+:is(:root[data-theme='dark'], :root[data-theme='dark'] *)[data-ui-role='student'] {
+  --ui-action-primary: #6ad7b6;
+  --ui-action-primary-hover: #8ae4c8;
+  --ui-action-primary-pressed: #57c5a4;
+  --ui-role-ink: #8ce2c8;
+}
+
+:is(:root[data-theme='dark'], :root[data-theme='dark'] *)[data-ui-role='admin'] {
+  --ui-action-primary: #bea6ff;
+  --ui-action-primary-hover: #d0bdff;
+  --ui-action-primary-pressed: #ae91fb;
+  --ui-role-ink: #d0bdff;
+}
+
+@theme inline {
+  --color-ui-page: var(--ui-background-page);
+  --color-ui-base: var(--ui-background-base);
+  --color-ui-muted: var(--ui-background-muted);
+  --color-ui-surface: var(--ui-surface-default);
+  --color-ui-subtle: var(--ui-surface-subtle);
+  --color-ui-primary: var(--ui-content-primary);
+  --color-ui-secondary: var(--ui-content-secondary);
+  --color-ui-tertiary: var(--ui-content-tertiary);
+  --color-ui-disabled: var(--ui-content-disabled);
+  --color-ui-on-action: var(--ui-content-on-action);
+  --color-ui-line: var(--ui-border-default);
+  --color-ui-strong: var(--ui-border-strong);
+  --color-ui-action: var(--ui-action-primary);
+  --color-ui-accent: var(--ui-accent-text);
+  --color-ui-accent-selected: var(--ui-accent-selected);
+  --color-ui-hover: var(--ui-state-hover);
+  --color-ui-selected: var(--ui-state-selected);
+  --color-ui-pressed: var(--ui-state-pressed);
+  --color-ui-success-accent: var(--ui-status-success-accent);
+  --color-ui-success-bg: var(--ui-status-success-bg);
+  --color-ui-success-text: var(--ui-status-success-text);
+  --color-ui-warning-accent: var(--ui-status-warning-accent);
+  --color-ui-warning-bg: var(--ui-status-warning-bg);
+  --color-ui-warning-text: var(--ui-status-warning-text);
+  --color-ui-danger-accent: var(--ui-status-danger-accent);
+  --color-ui-danger-bg: var(--ui-status-danger-bg);
+  --color-ui-danger-text: var(--ui-status-danger-text);
+  --color-ui-info-accent: var(--ui-status-info-accent);
+  --color-ui-info-bg: var(--ui-status-info-bg);
+  --color-ui-info-text: var(--ui-status-info-text);
+  --font-sans: var(--ui-font-body);
+  --font-mono: var(--ui-font-code);
+  --radius-sm: var(--ui-radius-sm);
+  --radius-md: var(--ui-radius-md);
+  --radius-lg: var(--ui-radius-lg);
+  --radius-xl: var(--ui-radius-card);
+  --radius-2xl: var(--ui-radius-dialog);
+}

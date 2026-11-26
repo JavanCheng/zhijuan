@@ -1,6 +1,7 @@
+import './login.css';
 import { useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { Alert, Button, ConfigProvider, Form, Input, Spin, Tooltip } from 'antd';
+import { App, Button, Form, Input, Spin } from 'antd';
 import {
   ArrowRightOutlined,
   IdcardOutlined,
@@ -11,10 +12,9 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { homeOf, useAuth } from '../auth';
-import { BrandMark } from '../ui';
+import { BrandMark, IconButton } from '../ui';
 import { BRAND } from '../brand';
 import { useFavicon } from '../favicon';
-import { adminTheme, studentTheme, teacherTheme } from '../theme';
 import { ChooserArt, StudentArt, TeacherArt } from './loginArt';
 
 type LoginVariant = 'chooser' | 'admin' | 'teacher' | 'student';
@@ -27,15 +27,7 @@ const WORKSPACE: Record<LoginVariant, string> = {
   student: '学生工作台',
 };
 
-/** 每个入口一种主色：左侧图形与右侧按钮同色系 */
-const ACCENT: Record<LoginVariant, [string, string]> = {
-  chooser: ['#b6a5ff', '#5b46e8'],
-  admin: ['#c4b5fd', '#6d4ad8'],
-  teacher: ['#74a0ff', '#2a54e8'],
-  student: ['#5ee3b8', '#0f9e77'],
-};
-
-/** 账号输入框旁的帮助说明：悬停 / 点击问号查看 */
+/** 账号输入框旁的帮助说明：悬停或聚焦问号查看 */
 const TEACHER_ACCOUNT_TIPS = (
   <ul className="m-0 list-disc space-y-1 pl-4 text-left">
     <li>教师账号由管理员统一创建，初始密码为手机号</li>
@@ -44,32 +36,28 @@ const TEACHER_ACCOUNT_TIPS = (
 );
 
 function Hero({ variant }: { variant: LoginVariant }) {
-  const [accent] = ACCENT[variant];
+  const tone = variant === 'student' ? 'green' : variant === 'admin' ? 'purple' : 'blue';
   const Art =
     variant === 'student' ? StudentArt : variant === 'teacher' || variant === 'admin' ? TeacherArt : ChooserArt;
-  const markTone = variant === 'student' ? 'green' : variant === 'admin' ? 'purple' : 'blue';
   return (
     <section className="login-hero hidden flex-col p-12 lg:flex xl:p-14">
       <div className="relative z-10 flex items-center justify-between gap-4">
         <Link to="/login" className="flex items-center gap-3">
-          <BrandMark size={40} tone={markTone} />
+          <BrandMark size={40} tone={tone} />
           <div>
-            <div className="wordmark-on-dark text-[17px] font-semibold leading-tight">{BRAND.name}</div>
-            <div className="mt-0.5 text-[10.5px] uppercase tracking-[0.22em] text-white/45">{BRAND.latin}</div>
+            <div className="wordmark-ink text-[17px] font-semibold leading-tight">{BRAND.name}</div>
+            <div className="mt-0.5 text-[10.5px] uppercase tracking-[0.22em] text-ui-tertiary">{BRAND.latin}</div>
           </div>
         </Link>
 
         <div className="hero-workspace">
-          <span
-            className="hero-workspace-dot"
-            style={{ background: accent, boxShadow: `0 0 10px ${accent}` }}
-          />
+          <span className="hero-workspace-dot" aria-hidden="true" />
           <span>{WORKSPACE[variant]}</span>
         </div>
       </div>
 
       <div className="relative z-10 flex flex-1 items-center justify-center py-8">
-        <Art accent={ACCENT[variant]} />
+        <Art />
       </div>
     </section>
   );
@@ -78,29 +66,26 @@ function Hero({ variant }: { variant: LoginVariant }) {
 function LoginShell({ variant, children }: { variant: LoginVariant; children: ReactNode }) {
   const isStudent = variant === 'student';
   const isAdmin = variant === 'admin';
-  const markTone = isStudent ? 'green' : isAdmin ? 'purple' : 'blue';
   useFavicon(isStudent ? 'green' : isAdmin ? 'purple' : 'blue');
   return (
-    <ConfigProvider theme={isStudent ? studentTheme : isAdmin ? adminTheme : teacherTheme}>
-      <div className={`grid min-h-screen lg:grid-cols-2 ${isStudent ? 'tone-student' : isAdmin ? 'tone-admin' : ''}`}>
-        <Hero variant={variant} />
-        <section className="flex items-center justify-center bg-white p-8">
-          <div className="w-full max-w-[400px]">
-            <div className="mb-9 flex items-center gap-2.5 lg:hidden">
-              <BrandMark size={34} tone={markTone} />
-              <div>
-                <div className="wordmark-ink text-[15px] font-semibold">{BRAND.name}</div>
-                <div className="text-[10px] uppercase tracking-[0.18em] text-[#98a1b3]">{BRAND.latin}</div>
-              </div>
-              <span className="ml-auto rounded-full bg-[var(--brand-soft)] px-2.5 py-1 text-[11px] font-medium text-[var(--brand-strong)]">
-                {WORKSPACE[variant]}
-              </span>
+    <div className="grid min-h-screen bg-ui-page lg:grid-cols-2">
+      <Hero variant={variant} />
+      <section className="flex items-center justify-center bg-ui-surface p-4 sm:p-8">
+        <div className="w-full max-w-[400px]">
+          <div className="mb-9 flex flex-wrap items-center gap-2.5 lg:hidden">
+            <BrandMark size={34} tone={isStudent ? 'green' : isAdmin ? 'purple' : 'blue'} />
+            <div>
+              <div className="wordmark-ink text-[15px] font-semibold">{BRAND.name}</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-ui-tertiary">{BRAND.latin}</div>
             </div>
-            {children}
+            <span className="ml-auto rounded-full bg-ui-accent-selected px-2.5 py-1 text-[11px] font-medium text-ui-accent">
+              {WORKSPACE[variant]}
+            </span>
           </div>
-        </section>
-      </div>
-    </ConfigProvider>
+          {children}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -116,7 +101,7 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 
 function LoginLoading() {
   return (
-    <div className="flex h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center bg-ui-page">
       <Spin size="large" />
     </div>
   );
@@ -131,24 +116,24 @@ export function LoginChooser() {
     <LoginShell variant="chooser">
       <Panel title="选择登录入口">
         <div className="mt-9 grid gap-3">
-          <Link to="/admin/login" className="role-card">
-            <span className="role-card-icon is-admin">
+          <Link to="/admin/login" className="role-card" data-ui-role="admin">
+            <span className="role-card-icon">
               <SafetyCertificateOutlined />
             </span>
             <span className="role-card-name">管理员登录</span>
             <ArrowRightOutlined className="role-card-arrow" />
           </Link>
 
-          <Link to="/teacher/login" className="role-card">
-            <span className="role-card-icon is-teacher">
+          <Link to="/teacher/login" className="role-card" data-ui-role="teacher">
+            <span className="role-card-icon">
               <UserOutlined />
             </span>
             <span className="role-card-name">教师登录</span>
             <ArrowRightOutlined className="role-card-arrow" />
           </Link>
 
-          <Link to="/student/login" className="role-card">
-            <span className="role-card-icon is-student">
+          <Link to="/student/login" className="role-card" data-ui-role="student">
+            <span className="role-card-icon">
               <IdcardOutlined />
             </span>
             <span className="role-card-name">学生登录</span>
@@ -164,19 +149,18 @@ export function TeacherLogin() {
   const { user, loginTeacher } = useAuth();
   const navigate = useNavigate();
   const [form] = Form.useForm<{ username: string; password: string }>();
-  const [error, setError] = useState('');
+  const { message } = App.useApp();
   const [pending, setPending] = useState(false);
 
   if (user) return <Navigate to={homeOf(user.role)} replace />;
 
   async function onFinish(values: { username: string; password: string }) {
-    setError('');
     setPending(true);
     try {
       const logged = await loginTeacher(values.username.trim(), values.password);
       navigate(homeOf(logged.role), { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败');
+      void message.error(err instanceof Error ? err.message : '登录失败');
     } finally {
       setPending(false);
     }
@@ -190,20 +174,19 @@ export function TeacherLogin() {
             label={
               <span className="inline-flex items-center gap-1">
                 账号
-                <Tooltip
-                  title={TEACHER_ACCOUNT_TIPS}
-                  trigger={['hover', 'click']}
-                  placement="right"
-                  styles={{
-                    root: { maxWidth: 'min(380px, calc(100vw - 120px))' },
-                    container: { maxWidth: 'min(380px, calc(100vw - 120px))' },
+                <IconButton
+                  htmlType="button"
+                  type="text"
+                  size="small"
+                  label="教师账号说明"
+                  tooltip={TEACHER_ACCOUNT_TIPS}
+                  icon={<QuestionCircleOutlined className="text-[11px]" />}
+                  className="cursor-help text-ui-secondary"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.currentTarget.focus();
                   }}
-                >
-                  <QuestionCircleOutlined
-                    aria-label="教师账号说明"
-                    className="cursor-help text-[11px] text-[#b6bfd0] transition-colors hover:text-[var(--brand)]"
-                  />
-                </Tooltip>
+                />
               </span>
             }
             name="username"
@@ -212,7 +195,7 @@ export function TeacherLogin() {
             <Input
               size="large"
               autoComplete="username"
-              prefix={<UserOutlined className="text-[#98a1b3]" />}
+              prefix={<UserOutlined className="text-ui-tertiary" />}
               placeholder="请输入账号"
               autoFocus
             />
@@ -221,12 +204,11 @@ export function TeacherLogin() {
             <Input.Password
               size="large"
               autoComplete="current-password"
-              prefix={<LockOutlined className="text-[#98a1b3]" />}
+              prefix={<LockOutlined className="text-ui-tertiary" />}
               placeholder="请输入密码"
             />
           </Form.Item>
 
-          {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
           <Button type="primary" size="large" block htmlType="submit" loading={pending} className="login-submit">
             进入教师工作台
@@ -241,19 +223,18 @@ export function AdminLogin() {
   const { user, loginAdmin } = useAuth();
   const navigate = useNavigate();
   const [form] = Form.useForm<{ username: string; password: string }>();
-  const [error, setError] = useState('');
+  const { message } = App.useApp();
   const [pending, setPending] = useState(false);
 
   if (user) return <Navigate to={homeOf(user.role)} replace />;
 
   async function onFinish(values: { username: string; password: string }) {
-    setError('');
     setPending(true);
     try {
       const logged = await loginAdmin(values.username.trim(), values.password);
       navigate(homeOf(logged.role), { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败');
+      void message.error(err instanceof Error ? err.message : '登录失败');
     } finally {
       setPending(false);
     }
@@ -267,7 +248,7 @@ export function AdminLogin() {
             <Input
               size="large"
               autoComplete="username"
-              prefix={<SafetyCertificateOutlined className="text-[#98a1b3]" />}
+              prefix={<SafetyCertificateOutlined className="text-ui-tertiary" />}
               placeholder="请输入管理员账号"
               autoFocus
             />
@@ -276,12 +257,11 @@ export function AdminLogin() {
             <Input.Password
               size="large"
               autoComplete="current-password"
-              prefix={<LockOutlined className="text-[#98a1b3]" />}
+              prefix={<LockOutlined className="text-ui-tertiary" />}
               placeholder="请输入密码"
             />
           </Form.Item>
 
-          {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
           <Button type="primary" size="large" block htmlType="submit" loading={pending} className="login-submit">
             进入管理员工作台
@@ -296,19 +276,18 @@ export function StudentLogin() {
   const { user, loginStudent } = useAuth();
   const navigate = useNavigate();
   const [form] = Form.useForm<{ name: string; studentNo: string }>();
-  const [error, setError] = useState('');
+  const { message } = App.useApp();
   const [pending, setPending] = useState(false);
 
   if (user) return <Navigate to={homeOf(user.role)} replace />;
 
   async function onFinish(values: { name: string; studentNo: string }) {
-    setError('');
     setPending(true);
     try {
       const logged = await loginStudent(values.name.trim(), values.studentNo.trim());
       navigate(homeOf(logged.role), { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败');
+      void message.error(err instanceof Error ? err.message : '登录失败');
     } finally {
       setPending(false);
     }
@@ -322,7 +301,7 @@ export function StudentLogin() {
             <Input
               size="large"
               autoComplete="name"
-              prefix={<UserOutlined className="text-[#98a1b3]" />}
+              prefix={<UserOutlined className="text-ui-tertiary" />}
               placeholder="请输入姓名"
               autoFocus
             />
@@ -331,12 +310,11 @@ export function StudentLogin() {
             <Input
               size="large"
               autoComplete="off"
-              prefix={<NumberOutlined className="text-[#98a1b3]" />}
+              prefix={<NumberOutlined className="text-ui-tertiary" />}
               placeholder="请输入学号"
             />
           </Form.Item>
 
-          {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
           <Button type="primary" size="large" block htmlType="submit" loading={pending} className="login-submit">
             进入学生工作台

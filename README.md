@@ -11,6 +11,8 @@
 
 ## 界面预览
 
+界面使用本地托管的 MiSans 和 Google Sans Flex，许可与来源见[字体声明](public/fonts/NOTICE.md)。
+
 **登录入口**（管理员 / 教师 / 学生使用三个独立入口，学生仅支持已录入名册）
 
 ![登录入口](docs/images/01-login.png)

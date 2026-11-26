@@ -1,0 +1,10 @@
+/* ── 成绩头部 ───────────────────────────────────────── */
+.score-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--ui-border-default);
+  border-radius: var(--ui-radius-card);
+  padding: clamp(16px, 3vw, 32px);
+  color: var(--ui-content-primary);
+  background: var(--ui-surface-default);
+}

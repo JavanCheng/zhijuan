@@ -1,7 +1,9 @@
+import './exam.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
+  App,
   Button,
   Card,
   Checkbox,
@@ -17,7 +19,7 @@ import { ArrowLeftOutlined, ClockCircleOutlined, CodeOutlined } from '@ant-desig
 import { api, post, put } from '../../api';
 import type { QuestionStudent, StudentAnswer, StudentExamPage } from '../../../shared/types';
 import { isAnswered } from '../../../shared/grading';
-import { TypeTag, Page, SectionMaterial } from '../../ui';
+import { EmptyState, IconButton, TypeTag, Page, SectionMaterial } from '../../ui';
 import { formatCountdown, scoreText } from '../../format';
 
 const { Text } = Typography;
@@ -43,13 +45,13 @@ function QuestionInput({
   if (question.type === 'single') {
     return (
       <Radio.Group
-        className="option-list grid w-full gap-3"
+        className="option-list grid w-full min-w-0 grid-cols-1 gap-3 [overflow-wrap:anywhere]"
         value={value?.key}
         onChange={(e) => onChange({ key: e.target.value })}
       >
         {question.options.map((option) => (
           <Radio key={option.key} value={option.key} style={{ margin: 0 }}>
-            <span className="mr-2 font-semibold text-[#39445c]">{option.key}</span>
+            <span className="mr-2 font-semibold text-ui-primary">{option.key}</span>
             {option.text}
           </Radio>
         ))}
@@ -60,13 +62,13 @@ function QuestionInput({
   if (question.type === 'multiple') {
     return (
       <Checkbox.Group
-        className="option-list grid w-full gap-3"
+        className="option-list grid w-full min-w-0 grid-cols-1 gap-3 [overflow-wrap:anywhere]"
         value={value?.keys ?? []}
         onChange={(values) => onChange({ keys: [...(values as string[])].sort() })}
       >
         {question.options.map((option) => (
           <Checkbox key={option.key} value={option.key} style={{ margin: 0 }}>
-            <span className="mr-2 font-semibold text-[#39445c]">{option.key}</span>
+            <span className="mr-2 font-semibold text-ui-primary">{option.key}</span>
             {option.text}
           </Checkbox>
         ))}
@@ -83,10 +85,10 @@ function QuestionInput({
         value={value?.value}
         onChange={(e) => onChange({ value: e.target.value })}
       >
-        <Radio.Button value={true} style={{ minWidth: 120, textAlign: 'center' }}>
+        <Radio.Button value={true} style={{ minWidth: 'min(120px, 35vw)', textAlign: 'center' }}>
           正确
         </Radio.Button>
-        <Radio.Button value={false} style={{ minWidth: 120, textAlign: 'center' }}>
+        <Radio.Button value={false} style={{ minWidth: 'min(120px, 35vw)', textAlign: 'center' }}>
           错误
         </Radio.Button>
       </Radio.Group>
@@ -99,7 +101,7 @@ function QuestionInput({
       <div className="grid gap-3">
         {Array.from({ length: Math.max(question.blanks, 1) }).map((_, i) => (
           <div className="flex items-center gap-3" key={i}>
-            <span className="w-14 flex-none text-[12.5px] text-[#7a839a]">第 {i + 1} 空</span>
+            <span className="w-14 flex-none text-[12.5px] text-ui-secondary">第 {i + 1} 空</span>
             <Input
               value={blanks[i] ?? ''}
               placeholder="填写答案"
@@ -133,7 +135,7 @@ function QuestionInput({
   return (
     <div>
       <div className="code-shell">
-        <div className="code-bar">
+        <div className="code-bar flex-wrap">
           <CodeOutlined />
           <span>代码编辑器</span>
           <span className="flex-1" />
@@ -141,14 +143,14 @@ function QuestionInput({
           <Select
             size="small"
             value={language}
-            style={{ width: 128 }}
+            style={{ width: 128, maxWidth: '100%' }}
             onChange={(next) => onChange({ language: next, code })}
             options={languages.map((l) => ({
               value: l,
               label: l === 'python' ? 'Python 3' : l === 'javascript' ? 'JavaScript' : l,
             }))}
           />
-          <span className="text-[#64748b]">限时 {question.codeSpec?.timeLimitMs ?? 2000}ms / 测试点</span>
+          <span className="text-ui-secondary">限时 {question.codeSpec?.timeLimitMs ?? 2000}ms / 测试点</span>
         </div>
         <textarea
           className="code-editor"
@@ -173,9 +175,9 @@ function QuestionInput({
           </Text>
           {question.sampleCases.map((sample, i) => (
             <div className="answer-panel" key={i} style={{ fontSize: 12.5 }}>
-              <div className="mb-0.5 text-[11.5px] text-[#7a839a]">{sample.label} · 输入</div>
+              <div className="mb-0.5 text-[11.5px] text-ui-secondary">{sample.label} · 输入</div>
               {sample.stdin || '（无）'}
-              <div className="mb-0.5 mt-2 text-[11.5px] text-[#7a839a]">{sample.label} · 输出</div>
+              <div className="mb-0.5 mt-2 text-[11.5px] text-ui-secondary">{sample.label} · 输出</div>
               {sample.expectedStdout}
             </div>
           ))}
@@ -193,7 +195,9 @@ export function StudentExam() {
   const [page, setPage] = useState<StudentExamPage | null>(null);
   const [answers, setAnswers] = useState<Record<string, StudentAnswer>>({});
   const [index, setIndex] = useState(0);
-  const [error, setError] = useState('');
+  const { message } = App.useApp();
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [remaining, setRemaining] = useState<number | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -206,6 +210,7 @@ export function StudentExam() {
   answersRef.current = answers;
 
   useEffect(() => {
+    setLoadFailed(false);
     let alive = true;
     api<StudentExamPage>(`/api/student/exams/${examId}`)
       .then((data) => {
@@ -218,11 +223,15 @@ export function StudentExam() {
         setPage(data);
         setAnswers(data.answers);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : '加载失败'));
+      .catch((err) => {
+        if (!alive) return;
+        setLoadFailed(true);
+        void message.error(err instanceof Error ? err.message : '加载失败');
+      });
     return () => {
       alive = false;
     };
-  }, [examId, navigate]);
+  }, [examId, navigate, attempt, message]);
 
   const saveDraft = useCallback(async () => {
     const current = pageRef.current;
@@ -247,19 +256,18 @@ export function StudentExam() {
     if (!current || submittedRef.current) return;
     submittedRef.current = true;
     setSubmitting(true);
-    setError('');
     try {
       await put(`/api/student/submissions/${current.submission.id}/draft`, { answers: answersRef.current });
       await post(`/api/student/submissions/${current.submission.id}/submit`);
       navigate(`/student/result/${current.submission.id}`, { replace: true });
     } catch (err) {
       submittedRef.current = false;
-      setError(err instanceof Error ? err.message : '提交失败');
+      void message.error({ key: 'student-exam-submit', content: err instanceof Error ? err.message : '提交失败' });
     } finally {
       setSubmitting(false);
       setConfirmOpen(false);
     }
-  }, [navigate]);
+  }, [navigate, message]);
 
   useEffect(() => {
     const deadlineAt = page?.submission.deadlineAt;
@@ -295,7 +303,7 @@ export function StudentExam() {
   if (!page) {
     return (
       <Page>
-        {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
+        {loadFailed ? <EmptyState title="暂时无法显示试卷" action={<Button onClick={() => setAttempt((n) => n + 1)}>重试</Button>} /> : <Spin />}
       </Page>
     );
   }
@@ -317,7 +325,7 @@ export function StudentExam() {
         key={item.id}
         size="small"
         type={active ? 'primary' : 'default'}
-        className={!active && answered ? '!border-[var(--brand-line)] !bg-[var(--brand-soft)] !text-[var(--brand-strong)]' : ''}
+        className={!active && answered ? '!border-ui-strong !bg-ui-selected !text-ui-primary' : ''}
         onClick={() => setIndex(i)}
       >
         {i + 1}
@@ -327,24 +335,24 @@ export function StudentExam() {
 
   return (
     <>
-      <div className="sticky top-[62px] z-20 border-b border-[#e4e8f2] bg-white/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[1280px] flex-wrap items-center gap-4 px-6 py-3 lg:px-8">
-          <Button type="text" icon={<ArrowLeftOutlined />} aria-label="保存并退出" onClick={exit} />
-          <div>
-            <div className="text-[15.5px] font-semibold leading-tight">{page.exam.title}</div>
-            <div className="mt-0.5 text-[10.5px] text-[#98a1b3]">
+      <div className="sticky top-[62px] z-20 border-b border-ui-line bg-ui-surface">
+        <div className="mx-auto flex w-full max-w-[1280px] flex-wrap items-center gap-2 px-3 py-3 sm:gap-4 sm:px-6 lg:px-8">
+          <IconButton type="text" icon={<ArrowLeftOutlined />} label="保存并退出" onClick={exit} />
+          <div className="min-w-0 flex-1 basis-48 [overflow-wrap:anywhere]">
+            <div className="text-[15.5px] font-semibold leading-tight [overflow-wrap:anywhere]">{page.exam.title}</div>
+            <div className="mt-0.5 text-[10.5px] text-ui-tertiary">
               {page.exam.teacherName} · 满分 {page.exam.totalScore} 分 · {page.questions.length} 题
             </div>
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-4">
+          <div className="ml-auto flex flex-wrap items-center gap-2 sm:gap-4">
             <span className={`exam-timer ${urgent ? 'urgent' : ''}`}>
               <ClockCircleOutlined />
               {remaining === null ? '--:--' : formatCountdown(remaining)}
             </span>
-            <span className="flex items-center gap-1.5 text-[11.5px] text-[#98a1b3]">
+            <span className="flex items-center gap-1.5 text-[11.5px] text-ui-tertiary">
               <span
                 className={`inline-block h-1.5 w-1.5 rounded-full ${
-                  saving === 'error' ? 'bg-[#e86969]' : saving === 'saving' ? 'bg-[#f2a33c]' : 'bg-[#12b886]'
+                  saving === 'error' ? 'bg-[var(--ui-status-danger-accent)]' : saving === 'saving' ? 'bg-[var(--ui-status-warning-accent)]' : 'bg-[var(--ui-status-success-accent)]'
                 }`}
               />
               {saveLabel}
@@ -354,23 +362,22 @@ export function StudentExam() {
             </Button>
           </div>
         </div>
-        <div className="absolute bottom-0 left-0 h-[2px] bg-gradient-to-r from-[var(--brand-from)] to-[var(--brand)] transition-all" style={{ width: `${(answeredCount / Math.max(1, page.questions.length)) * 100}%` }} />
+        <div className="absolute bottom-0 left-0 h-[2px] bg-[var(--ui-action-primary)]" style={{ width: `${(answeredCount / Math.max(1, page.questions.length)) * 100}%` }} />
       </div>
 
       <Page className="!py-6">
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_288px]">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_288px]">
         <div>
-          {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
           {currentSection ? <SectionMaterial section={currentSection} /> : null}
 
           <Card>
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="rounded-lg bg-[var(--brand-soft)] px-2.5 py-1 text-[12.5px] font-semibold text-[var(--brand-strong)]">
+              <span className="rounded-lg bg-ui-muted px-2.5 py-1 text-[12.5px] font-semibold text-ui-primary">
                 第 {index + 1} 题
               </span>
               <TypeTag type={question.type} />
-              <span className="ml-auto text-[13px] text-[#7a839a]">本题 {scoreText(question.score)} 分</span>
+              <span className="ml-auto text-[13px] text-ui-secondary">本题 {scoreText(question.score)} 分</span>
             </div>
 
             <div className="stem" dangerouslySetInnerHTML={{ __html: question.stemHtml }} />
@@ -387,7 +394,7 @@ export function StudentExam() {
             </div>
           </Card>
 
-          <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
             <Button disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}>
               上一题
             </Button>
@@ -427,7 +434,7 @@ export function StudentExam() {
                   if (!rows.length) return null;
                   return (
                     <div key={section.index}>
-                      <div className="mb-1.5 text-[11px] font-semibold tracking-wide text-[#98a1b3]">{section.title}</div>
+                      <div className="mb-1.5 text-[11px] font-semibold tracking-wide text-ui-tertiary [overflow-wrap:anywhere]">{section.title}</div>
                       <div className="grid grid-cols-6 gap-2">{rows.map((row) => navButton(row.item, row.i))}</div>
                     </div>
                   );
@@ -436,12 +443,12 @@ export function StudentExam() {
             ) : (
               <div className="grid grid-cols-6 gap-2">{page.questions.map((item, i) => navButton(item, i))}</div>
             )}
-            <div className="mt-3 flex flex-wrap gap-3 text-[11.5px] text-[#7a839a]">
+            <div className="mt-3 flex flex-wrap gap-3 text-[11.5px] text-ui-secondary">
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-[var(--brand-line)] bg-[var(--brand-soft)]" /> 已答
+                <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-ui-strong bg-ui-selected" /> 已答
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-[#d3daea] bg-white" /> 未答
+                <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-ui-strong bg-ui-surface" /> 未答
               </span>
             </div>
           </Card>
@@ -458,7 +465,7 @@ export function StudentExam() {
               </div>
               <div className="flex justify-between">
                 <Text type="secondary">未作答</Text>
-                <strong style={{ color: unanswered ? '#d48806' : undefined }}>{unanswered}</strong>
+                <strong style={{ color: unanswered ? 'var(--ui-status-warning-text)' : undefined }}>{unanswered}</strong>
               </div>
             </div>
             <Text type="secondary" style={{ fontSize: 11.5, lineHeight: 1.7 }}>
@@ -478,7 +485,7 @@ export function StudentExam() {
         onOk={() => void doSubmit()}
         onCancel={() => setConfirmOpen(false)}
       >
-        <p className="mb-3 text-[13px] text-[#5b6479]">
+        <p className="mb-3 text-[13px] text-ui-secondary">
           共 {page.questions.length} 题，已作答 {answeredCount} 题。
         </p>
         {unanswered > 0 ? (

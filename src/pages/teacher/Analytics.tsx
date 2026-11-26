@@ -1,7 +1,8 @@
+import './analytics.css';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Alert,
+  App as AntApp,
   Button,
   Progress,
   Select,
@@ -48,7 +49,7 @@ import { StudentProfileDrawer } from './StudentProfileDrawer';
 
 const { Text } = Typography;
 
-const BUCKET_COLORS = ['#e86969', '#f2a33c', '#6f8cf5', '#3b63f3', '#12b886'];
+const BUCKET_COLORS = ['var(--ui-status-danger-accent)', 'var(--ui-status-warning-accent)', 'var(--ui-content-secondary)', 'var(--ui-status-info-accent)', 'var(--ui-status-success-accent)'];
 
 const shortTitle = (title: string, max = 8) => (title.length > max ? `${title.slice(0, max)}…` : title);
 const percent = (score: number, total: number) => (total > 0 ? Math.round((score / total) * 1000) / 10 : 0);
@@ -57,23 +58,12 @@ const parseIds = (value: string | null): number[] =>
     .split(',')
     .map((item) => Number(item))
     .filter((item) => Number.isInteger(item) && item > 0);
-const barGradient = (from: string, to: string) => ({
-  type: 'linear',
-  x: 0,
-  y: 0,
-  x2: 0,
-  y2: 1,
-  colorStops: [
-    { offset: 0, color: from },
-    { offset: 1, color: to },
-  ],
-});
 
-function rateColor(rate: number): string {
-  if (rate >= 85) return '#12b886';
-  if (rate >= 70) return '#3b63f3';
-  if (rate >= 60) return '#f2a33c';
-  return '#e86969';
+function rateColor(rate: number, kind: 'accent' | 'text' = 'accent'): string {
+  if (rate >= 85) return `var(--ui-status-success-${kind})`;
+  if (rate >= 70) return `var(--ui-status-info-${kind})`;
+  if (rate >= 60) return `var(--ui-status-warning-${kind})`;
+  return `var(--ui-status-danger-${kind})`;
 }
 
 function rankBadge(rank: number) {
@@ -136,13 +126,15 @@ function buildInsights(data: AnalyticsPayload): Array<{ icon: ReactNode; text: s
 
 export function TeacherAnalytics() {
   const navigate = useNavigate();
+  const { message } = AntApp.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryString = searchParams.toString();
 
   const [meta, setMeta] = useState<AnalyticsMeta | null>(null);
   const [data, setData] = useState<AnalyticsPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [metaFailed, setMetaFailed] = useState(false);
+  const [dataFailed, setDataFailed] = useState(false);
   const [tab, setTab] = useState('overview');
   const [refreshKey, setRefreshKey] = useState(0);
   const [profileId, setProfileId] = useState<number | null>(null);
@@ -154,15 +146,19 @@ export function TeacherAnalytics() {
     let alive = true;
     api<AnalyticsMeta>('/api/teacher/analytics/meta')
       .then((result) => {
-        if (alive) setMeta(result);
+        if (!alive) return;
+        setMeta(result);
+        setMetaFailed(false);
       })
       .catch((err) => {
-        if (alive) setError(err instanceof Error ? err.message : '加载失败');
+        if (!alive) return;
+        setMetaFailed(true);
+        void message.error({ key: 'teacher-analytics-meta-load', content: err instanceof Error ? err.message : '加载失败' });
       });
     return () => {
       alive = false;
     };
-  }, [refreshKey]);
+  }, [refreshKey, message]);
 
   useEffect(() => {
     if (!meta) return;
@@ -176,7 +172,7 @@ export function TeacherAnalytics() {
       .then((result) => {
         if (!alive) return;
         setData(result);
-        setError('');
+        setDataFailed(false);
         if (!searchParams.get('examId')) {
           const next = new URLSearchParams(searchParams);
           next.set('examId', String(result.exam.id));
@@ -184,7 +180,9 @@ export function TeacherAnalytics() {
         }
       })
       .catch((err) => {
-        if (alive) setError(err instanceof Error ? err.message : '加载失败');
+        if (!alive) return;
+        setDataFailed(true);
+        void message.error({ key: 'teacher-analytics-data-load', content: err instanceof Error ? err.message : '加载失败' });
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -194,7 +192,7 @@ export function TeacherAnalytics() {
     };
     // searchParams 由 queryString 代表；setSearchParams 用于回填默认考试
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meta, queryString, refreshKey]);
+  }, [meta, queryString, refreshKey, message]);
 
   const updateQuery = useCallback(
     (patch: Record<string, string | null>) => {
@@ -259,14 +257,14 @@ export function TeacherAnalytics() {
         type: 'category',
         data: distribution.map((item) => item.label),
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
         axisLabel: axisLabel(),
       },
       yAxis: {
         type: 'value',
         minInterval: 1,
         name: '人数',
-        nameTextStyle: { color: '#98a1b3', fontSize: 11, padding: [0, 0, 0, -14] },
+        nameTextStyle: { color: 'var(--ui-content-tertiary)', fontSize: 11, padding: [0, 0, 0, -14] },
         axisLabel: axisLabel(),
         splitLine: splitLine(),
       },
@@ -278,7 +276,7 @@ export function TeacherAnalytics() {
             value: item.count,
             itemStyle: { color: BUCKET_COLORS[index], borderRadius: [7, 7, 2, 2] },
           })),
-          label: { show: true, position: 'top', color: '#4b5670', fontSize: 11 },
+          label: { show: true, position: 'top', color: 'var(--ui-content-secondary)', fontSize: 11 },
         },
       ],
     };
@@ -294,14 +292,14 @@ export function TeacherAnalytics() {
         right: 0,
         itemWidth: 14,
         itemHeight: 8,
-        textStyle: { color: '#7b86a0', fontSize: 11 },
+        textStyle: { color: 'var(--ui-content-secondary)', fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: trend.map((item) => shortTitle(item.title)),
         boundaryGap: false,
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
         axisLabel: axisLabel({ interval: 0, rotate: trend.length > 4 ? 18 : 0 }),
       },
       yAxis: {
@@ -320,20 +318,8 @@ export function TeacherAnalytics() {
           data: trend.map((item) => item.avg),
           lineStyle: { width: 3, color: CHART_COLORS[0] },
           itemStyle: { color: CHART_COLORS[0] },
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: 'rgba(59,99,243,.22)' },
-                { offset: 1, color: 'rgba(59,99,243,.01)' },
-              ],
-            },
-          },
-          label: { show: true, position: 'top', color: '#3358e8', fontSize: 10.5, formatter: '{c}%' },
+          areaStyle: { color: 'var(--ui-status-info-bg)' },
+          label: { show: true, position: 'top', color: 'var(--ui-action-primary)', fontSize: 10.5, formatter: '{c}%' },
         },
         {
           name: '最高',
@@ -341,8 +327,8 @@ export function TeacherAnalytics() {
           smooth: true,
           symbolSize: 4,
           data: trend.map((item) => item.max),
-          lineStyle: { width: 1.5, type: 'dashed', color: '#12b886' },
-          itemStyle: { color: '#12b886' },
+          lineStyle: { width: 1.5, type: 'dashed', color: 'var(--ui-status-success-accent)' },
+          itemStyle: { color: 'var(--ui-status-success-accent)' },
         },
         {
           name: '最低',
@@ -350,8 +336,8 @@ export function TeacherAnalytics() {
           smooth: true,
           symbolSize: 4,
           data: trend.map((item) => item.min),
-          lineStyle: { width: 1.5, type: 'dashed', color: '#f2a33c' },
-          itemStyle: { color: '#f2a33c' },
+          lineStyle: { width: 1.5, type: 'dashed', color: 'var(--ui-status-warning-accent)' },
+          itemStyle: { color: 'var(--ui-status-warning-accent)' },
         },
       ],
     };
@@ -367,13 +353,13 @@ export function TeacherAnalytics() {
         right: 0,
         itemWidth: 14,
         itemHeight: 8,
-        textStyle: { color: '#7b86a0', fontSize: 11 },
+        textStyle: { color: 'var(--ui-content-secondary)', fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: classes.map((item) => item.name),
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
         axisLabel: axisLabel(),
       },
       yAxis: {
@@ -389,8 +375,8 @@ export function TeacherAnalytics() {
           type: 'bar',
           barWidth: '38%',
           data: classes.map((item) => item.avg),
-          itemStyle: { color: barGradient('#6f8cf5', '#3358e8'), borderRadius: [7, 7, 0, 0] },
-          label: { show: true, position: 'top', color: '#4b5670', fontSize: 10.5 },
+          itemStyle: { color: 'var(--ui-action-primary)', borderRadius: [7, 7, 0, 0] },
+          label: { show: true, position: 'top', color: 'var(--ui-content-secondary)', fontSize: 10.5 },
         },
         {
           name: '最高分',
@@ -398,8 +384,8 @@ export function TeacherAnalytics() {
           smooth: true,
           symbolSize: 6,
           data: classes.map((item) => item.max),
-          lineStyle: { width: 1.5, type: 'dashed', color: '#12b886' },
-          itemStyle: { color: '#12b886' },
+          lineStyle: { width: 1.5, type: 'dashed', color: 'var(--ui-status-success-accent)' },
+          itemStyle: { color: 'var(--ui-status-success-accent)' },
         },
         {
           name: '最低分',
@@ -407,8 +393,8 @@ export function TeacherAnalytics() {
           smooth: true,
           symbolSize: 6,
           data: classes.map((item) => item.min),
-          lineStyle: { width: 1.5, type: 'dashed', color: '#f2a33c' },
-          itemStyle: { color: '#f2a33c' },
+          lineStyle: { width: 1.5, type: 'dashed', color: 'var(--ui-status-warning-accent)' },
+          itemStyle: { color: 'var(--ui-status-warning-accent)' },
         },
       ],
     };
@@ -424,13 +410,13 @@ export function TeacherAnalytics() {
         right: 0,
         itemWidth: 14,
         itemHeight: 8,
-        textStyle: { color: '#7b86a0', fontSize: 11 },
+        textStyle: { color: 'var(--ui-content-secondary)', fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: classes.map((item) => item.name),
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
         axisLabel: axisLabel(),
       },
       yAxis: {
@@ -446,16 +432,16 @@ export function TeacherAnalytics() {
           type: 'bar',
           barWidth: '30%',
           data: classes.map((item) => item.passRate),
-          itemStyle: { color: '#12b886', borderRadius: [6, 6, 0, 0] },
-          label: { show: true, position: 'top', color: '#0b7a63', fontSize: 10.5, formatter: '{c}%' },
+          itemStyle: { color: 'var(--ui-status-success-accent)', borderRadius: [6, 6, 0, 0] },
+          label: { show: true, position: 'top', color: 'var(--ui-status-success-text)', fontSize: 10.5, formatter: '{c}%' },
         },
         {
           name: '优秀率',
           type: 'bar',
           barWidth: '30%',
           data: classes.map((item) => item.excellentRate),
-          itemStyle: { color: '#f2a33c', borderRadius: [6, 6, 0, 0] },
-          label: { show: true, position: 'top', color: '#a3680d', fontSize: 10.5, formatter: '{c}%' },
+          itemStyle: { color: 'var(--ui-status-warning-accent)', borderRadius: [6, 6, 0, 0] },
+          label: { show: true, position: 'top', color: 'var(--ui-status-warning-text)', fontSize: 10.5, formatter: '{c}%' },
         },
       ],
     };
@@ -471,13 +457,13 @@ export function TeacherAnalytics() {
         bottom: 0,
         itemWidth: 10,
         itemHeight: 8,
-        textStyle: { color: '#7b86a0', fontSize: 11 },
+        textStyle: { color: 'var(--ui-content-secondary)', fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: classes.map((item) => item.name),
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
         axisLabel: axisLabel(),
       },
       yAxis: {
@@ -536,7 +522,7 @@ export function TeacherAnalytics() {
           label: {
             show: true,
             position: 'right',
-            color: '#4b5670',
+            color: 'var(--ui-content-secondary)',
             fontSize: 10.5,
             formatter: '{c}%',
           },
@@ -553,10 +539,10 @@ export function TeacherAnalytics() {
         center: ['50%', '54%'],
         radius: '62%',
         indicator: items.map((item) => ({ name: item.label, max: 100 })),
-        axisName: { color: '#6b7488', fontSize: 11.5 },
-        splitLine: { lineStyle: { color: '#e6eaf3' } },
-        splitArea: { areaStyle: { color: ['#fbfcff', '#f6f8ff'] } },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
+        axisName: { color: 'var(--ui-content-secondary)', fontSize: 11.5 },
+        splitLine: { lineStyle: { color: 'var(--ui-border-default)' } },
+        splitArea: { areaStyle: { color: ['var(--ui-surface-subtle)', 'var(--ui-background-muted)'] } },
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
       },
       series: [
         {
@@ -566,9 +552,9 @@ export function TeacherAnalytics() {
             {
               name: '得分率',
               value: items.map((item) => item.rate),
-              areaStyle: { color: 'rgba(59,99,243,.14)' },
-              lineStyle: { color: '#3b63f3', width: 2 },
-              itemStyle: { color: '#3b63f3' },
+              areaStyle: { color: 'var(--ui-status-info-bg)' },
+              lineStyle: { color: 'var(--ui-status-info-accent)', width: 2 },
+              itemStyle: { color: 'var(--ui-status-info-accent)' },
             },
           ],
         },
@@ -592,8 +578,8 @@ export function TeacherAnalytics() {
         type: 'category',
         data: compareStudents.map((student) => student.name),
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
-        axisLabel: axisLabel({ interval: 0 }),
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
+        axisLabel: axisLabel({ hideOverlap: true, overflow: 'truncate', width: 80 }),
       },
       yAxis: {
         type: 'value',
@@ -611,20 +597,20 @@ export function TeacherAnalytics() {
             return {
               value: student.score,
               itemStyle: {
-                color: barGradient(`${color}99`, color),
+                color,
                 borderRadius: [7, 7, 0, 0],
               },
             };
           }),
-          label: { show: true, position: 'top', color: '#4b5670', fontSize: 10.5 },
+          label: { show: true, position: 'top', color: 'var(--ui-content-secondary)', fontSize: 10.5 },
           markLine: {
             silent: true,
             symbol: 'none',
-            lineStyle: { color: '#f2a33c', type: 'dashed', width: 1.5 },
+            lineStyle: { color: 'var(--ui-status-warning-accent)', type: 'dashed', width: 1.5 },
             label: {
               show: true,
               position: 'insideEndTop',
-              color: '#a3680d',
+              color: 'var(--ui-status-warning-text)',
               fontSize: 10,
               formatter: '平均 {c}',
               padding: [0, 0, 2, 4],
@@ -646,13 +632,13 @@ export function TeacherAnalytics() {
         bottom: 0,
         itemWidth: 12,
         itemHeight: 8,
-        textStyle: { color: '#7b86a0', fontSize: 11 },
+        textStyle: { color: 'var(--ui-content-secondary)', fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: questions.map((question) => `第${question.seq}题`),
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
         axisLabel: axisLabel(),
       },
       yAxis: {
@@ -715,9 +701,9 @@ export function TeacherAnalytics() {
       dataIndex: 'name',
       width: 150,
       render: (_, row) => (
-        <div className="leading-tight">
-          <div className="text-[13px] font-medium text-[#26304a]">{row.name}</div>
-          <div className="text-[10.5px] text-[#98a1b3]">{row.studentNo}</div>
+        <div className="leading-tight [overflow-wrap:anywhere]">
+          <div className="text-[13px] font-medium text-ui-primary">{row.name}</div>
+          <div className="text-[10.5px] text-ui-tertiary">{row.studentNo}</div>
         </div>
       ),
     },
@@ -733,9 +719,9 @@ export function TeacherAnalytics() {
       render: (_, row) => {
         const rate = percent(row.score, row.totalScore);
         return (
-          <span className="font-semibold tabular-nums" style={{ color: rateColor(rate) }}>
+          <span className="font-semibold tabular-nums" style={{ color: rateColor(rate, 'text') }}>
             {scoreText(row.score)}
-            <span className="ml-1 text-[11px] font-normal text-[#98a1b3]">/ {scoreText(row.totalScore)}</span>
+            <span className="ml-1 text-[11px] font-normal text-ui-tertiary">/ {scoreText(row.totalScore)}</span>
           </span>
         );
       },
@@ -752,10 +738,10 @@ export function TeacherAnalytics() {
               showInfo={false}
               size="small"
               strokeColor={rateColor(rate)}
-              trailColor="#eef1f8"
+              trailColor="var(--ui-background-muted)"
               style={{ margin: 0, width: 76 }}
             />
-            <span className="tabular-nums text-[11.5px] text-[#5b6684]">{rate}%</span>
+            <span className="tabular-nums text-[11.5px] text-ui-secondary">{rate}%</span>
           </div>
         );
       },
@@ -764,7 +750,7 @@ export function TeacherAnalytics() {
       title: '班级排名',
       width: 96,
       render: (_, row) => (
-        <span className="tabular-nums text-[#5b6684]">
+        <span className="tabular-nums text-ui-secondary">
           {row.classRank} / {row.classSize}
         </span>
       ),
@@ -795,7 +781,7 @@ export function TeacherAnalytics() {
     {
       title: '班级',
       dataIndex: 'name',
-      render: (value: string) => <span className="font-medium text-[#26304a]">{value}</span>,
+      render: (value: string) => <span className="font-medium text-ui-primary [overflow-wrap:anywhere]">{value}</span>,
     },
     {
       title: '参评 / 人数',
@@ -807,14 +793,14 @@ export function TeacherAnalytics() {
       ),
     },
     { title: '平均分', width: 88, render: (_, row) => <span className="font-semibold tabular-nums">{scoreText(row.avg)}</span> },
-    { title: '最高', width: 72, render: (_, row) => <span className="tabular-nums text-[#0f7a56]">{scoreText(row.max)}</span> },
-    { title: '最低', width: 72, render: (_, row) => <span className="tabular-nums text-[#bf3737]">{scoreText(row.min)}</span> },
+    { title: '最高', width: 72, render: (_, row) => <span className="tabular-nums text-[var(--ui-status-success-text)]">{scoreText(row.max)}</span> },
+    { title: '最低', width: 72, render: (_, row) => <span className="tabular-nums text-[var(--ui-status-danger-text)]">{scoreText(row.min)}</span> },
     {
       title: '及格率',
       width: 150,
       render: (_, row) => (
         <div className="flex items-center gap-2">
-          <Progress percent={row.passRate} showInfo={false} size="small" strokeColor="#12b886" style={{ margin: 0, width: 72 }} />
+          <Progress percent={row.passRate} showInfo={false} size="small" strokeColor="var(--ui-status-success-accent)" style={{ margin: 0, width: 72 }} />
           <span className="tabular-nums text-[11.5px]">{row.passRate}%</span>
         </div>
       ),
@@ -824,7 +810,7 @@ export function TeacherAnalytics() {
       width: 150,
       render: (_, row) => (
         <div className="flex items-center gap-2">
-          <Progress percent={row.excellentRate} showInfo={false} size="small" strokeColor="#f2a33c" style={{ margin: 0, width: 72 }} />
+          <Progress percent={row.excellentRate} showInfo={false} size="small" strokeColor="var(--ui-status-warning-accent)" style={{ margin: 0, width: 72 }} />
           <span className="tabular-nums text-[11.5px]">{row.excellentRate}%</span>
         </div>
       ),
@@ -857,7 +843,7 @@ export function TeacherAnalytics() {
             strokeColor={rateColor(row.scoreRate)}
             style={{ margin: 0, width: 94 }}
           />
-          <span className="tabular-nums text-[11.5px]" style={{ color: rateColor(row.scoreRate) }}>
+          <span className="tabular-nums text-[11.5px]" style={{ color: rateColor(row.scoreRate, 'text') }}>
             {row.scoreRate}%
           </span>
         </div>
@@ -869,7 +855,7 @@ export function TeacherAnalytics() {
       title: '作答',
       width: 86,
       render: (_, row) => (
-        <span className="tabular-nums text-[#7b86a0]">
+        <span className="tabular-nums text-ui-secondary">
           {row.answered} / {data?.kpi.participants ?? 0}
         </span>
       ),
@@ -880,11 +866,14 @@ export function TeacherAnalytics() {
     return (
       <Page>
         <PageHeader eyebrow="Analytics" title="学情看板" subtitle="按班级与学生维度汇总成绩、定位薄弱题目。" />
-        {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
-        <div className="grid gap-4">
-          <Skeleton active paragraph={{ rows: 2 }} />
-          <Skeleton active paragraph={{ rows: 6 }} />
-        </div>
+        {metaFailed ? (
+          <EmptyState title="学情看板暂不可用" action={<Button onClick={() => setRefreshKey((key) => key + 1)}>重试</Button>} />
+        ) : (
+          <div className="grid gap-4">
+            <Skeleton paragraph={{ rows: 2 }} />
+            <Skeleton paragraph={{ rows: 6 }} />
+          </div>
+        )}
       </Page>
     );
   }
@@ -933,10 +922,8 @@ export function TeacherAnalytics() {
         }
       />
 
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
-
       <div className="filter-bar mb-4">
-        <div className="filter-field" style={{ minWidth: 280, flex: '1 1 300px' }}>
+        <div className="filter-field" style={{ minWidth: 'min(100%, 280px)', flex: '1 1 300px' }}>
           <span className="filter-label">选择考试</span>
           <Select
             value={selectedExamId}
@@ -949,7 +936,7 @@ export function TeacherAnalytics() {
           />
         </div>
 
-        <div className="filter-field" style={{ minWidth: 220, flex: '1 1 230px' }}>
+        <div className="filter-field" style={{ minWidth: 'min(100%, 220px)', flex: '1 1 230px' }}>
           <span className="filter-label">班级（可多选）</span>
           <Select
             mode="multiple"
@@ -966,7 +953,7 @@ export function TeacherAnalytics() {
           />
         </div>
 
-        <div className="filter-field" style={{ minWidth: 240, flex: '1 1 250px' }}>
+        <div className="filter-field" style={{ minWidth: 'min(100%, 240px)', flex: '1 1 250px' }}>
           <span className="filter-label">学生（可多选对比）</span>
           <Select
             mode="multiple"
@@ -998,13 +985,15 @@ export function TeacherAnalytics() {
         <span>总体 {totalAllStudents} 人 · 及格线 60% · 优秀线 85% · 仅统计已评分答卷</span>
       </div>
 
-      {!data ? (
+      {!data && dataFailed && !loading ? (
+        <EmptyState title="统计数据暂不可用" action={<Button onClick={() => setRefreshKey((key) => key + 1)}>重试</Button>} />
+      ) : !data ? (
         <div className="grid gap-4">
-          <Skeleton active paragraph={{ rows: 2 }} />
-          <Skeleton active paragraph={{ rows: 8 }} />
+          <Skeleton paragraph={{ rows: 2 }} />
+          <Skeleton paragraph={{ rows: 8 }} />
         </div>
       ) : (
-        <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+        <div className="content-reveal min-w-0" aria-busy={loading}>
           <div className="mb-4 grid grid-cols-2 gap-3.5 lg:grid-cols-5">
             <StatCard
               label="参评人数"
@@ -1050,7 +1039,7 @@ export function TeacherAnalytics() {
 
           <div className="insight-strip mb-5">
             {insights.map((item, index) => (
-              <div className="insight-item" key={index}>
+              <div className="insight-item [overflow-wrap:anywhere]" key={index}>
                 <span className="insight-icon">{item.icon}</span>
                 <span>{item.text}</span>
               </div>
@@ -1066,8 +1055,8 @@ export function TeacherAnalytics() {
                 label: '总览',
                 children: (
                   <div className="grid gap-4">
-                    <div className="grid gap-4 xl:grid-cols-12">
-                      <div className="xl:col-span-7">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+                      <div className="min-w-0 xl:col-span-7">
                         <Panel
                           title="成绩分布"
                           desc={`按卷面得分率分段统计 · 共 ${data.kpi.participants} 人`}
@@ -1076,7 +1065,7 @@ export function TeacherAnalytics() {
                           <Chart option={distributionOption} height={290} ariaLabel="成绩分布柱状图" />
                         </Panel>
                       </div>
-                      <div className="xl:col-span-5">
+                      <div className="min-w-0 xl:col-span-5">
                         <Panel
                           title="历次考试趋势"
                           desc="最近 8 场已评考试的平均得分率变化。"
@@ -1091,13 +1080,13 @@ export function TeacherAnalytics() {
                       </div>
                     </div>
 
-                    <div className="grid gap-4 xl:grid-cols-12">
-                      <div className="xl:col-span-6">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+                      <div className="min-w-0 xl:col-span-6">
                         <Panel title="班级平均分对比" desc="柱状为平均分，虚线为班级最高 / 最低分。">
                           <Chart option={classScoreOption} height={300} ariaLabel="班级平均分对比图" />
                         </Panel>
                       </div>
-                      <div className="xl:col-span-6">
+                      <div className="min-w-0 xl:col-span-6">
                         <Panel title="逐题得分率" desc="横向定位本次考试的薄弱题目，优先讲评低得分率题目。">
                           <Chart option={questionRateOption} height={300} ariaLabel="逐题得分率条形图" />
                         </Panel>
@@ -1111,13 +1100,13 @@ export function TeacherAnalytics() {
                 label: '班级对比',
                 children: (
                   <div className="grid gap-4">
-                    <div className="grid gap-4 xl:grid-cols-12">
-                      <div className="xl:col-span-7">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+                      <div className="min-w-0 xl:col-span-7">
                         <Panel title="班级成绩对比" desc="平均分、最高分与最低分同图展示，快速识别班级差距。">
                           <Chart option={classScoreOption} height={320} ariaLabel="班级成绩对比图" />
                         </Panel>
                       </div>
-                      <div className="xl:col-span-5">
+                      <div className="min-w-0 xl:col-span-5">
                         <Panel title="及格率与优秀率" desc="按卷面 60% / 85% 计算。">
                           <Chart option={classRateOption} height={320} ariaLabel="班级及格率与优秀率对比图" />
                         </Panel>
@@ -1201,13 +1190,13 @@ export function TeacherAnalytics() {
                 label: '逐题分析',
                 children: (
                   <div className="grid gap-4">
-                    <div className="grid gap-4 xl:grid-cols-12">
-                      <div className="xl:col-span-7">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+                      <div className="min-w-0 xl:col-span-7">
                         <Panel title="题目得分率" desc="颜色越偏红表示得分率越低，优先安排讲评。">
                           <Chart option={questionRateOption} height={340} ariaLabel="逐题得分率条形图" />
                         </Panel>
                       </div>
-                      <div className="xl:col-span-5">
+                      <div className="min-w-0 xl:col-span-5">
                         <Panel title="题型得分率" desc="按题型汇总的得分率雷达图，观察能力结构。">
                           <Chart option={typeRadarOption} height={340} ariaLabel="题型得分率雷达图" />
                         </Panel>

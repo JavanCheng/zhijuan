@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, Col, Row, Skeleton, Space, Tag } from 'antd';
+import { App, Button, Card, Col, Row, Skeleton, Space } from 'antd';
 import {
   ClockCircleOutlined,
   FileTextOutlined,
@@ -27,17 +27,19 @@ export function StudentHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [exams, setExams] = useState<StudentExamCard[] | null>(null);
-  const [error, setError] = useState('');
+  const { message } = App.useApp();
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
+    setLoadFailed(false);
     try {
       const data = await api<StudentExamCard[]>('/api/student/exams');
       setExams(data);
-      setError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      setLoadFailed(true);
+      void message.error({ key: 'student-exams-load', content: err instanceof Error ? err.message : '加载失败' });
     }
-  }, []);
+  }, [message]);
 
   useEffect(() => {
     void load();
@@ -59,7 +61,7 @@ export function StudentHome() {
   if (!exams) {
     return (
       <Page>
-        {error ? <Alert type="error" showIcon message={error} /> : <Skeleton active paragraph={{ rows: 8 }} />}
+        {loadFailed ? <EmptyState title="暂时无法显示考试列表" action={<Button onClick={() => void load()}>重试</Button>} /> : <Skeleton paragraph={{ rows: 8 }} />}
       </Page>
     );
   }
@@ -82,7 +84,6 @@ export function StudentHome() {
         }
       />
 
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
       <div className="mb-5 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         <StatCard label="待作答" value={stats.todo} suffix="场" icon={<PlayCircleOutlined />} tone="blue" hint="发布中的考试" />
@@ -100,7 +101,7 @@ export function StudentHome() {
           />
         </Card>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row className="content-reveal" gutter={[16, 16]}>
           {exams.map((exam) => {
             const sub = exam.submission;
             const inProgress = sub?.status === 'in_progress';
@@ -112,12 +113,10 @@ export function StudentHome() {
             return (
               <Col xs={24} md={12} key={exam.id}>
                 <Card
-                  hoverable
-                  className="lift-card"
                   style={{ height: '100%' }}
                   styles={{ body: { padding: 20, height: '100%', display: 'flex', flexDirection: 'column', gap: 14 } }}
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                     <Space size={8} wrap>
                       <ExamStatusTag status={exam.status} />
                       {exam.resultsPublished ? <Pill tone="green">成绩已发布</Pill> : null}
@@ -126,8 +125,8 @@ export function StudentHome() {
                     </Space>
                     {showScore ? (
                       <div className="text-right">
-                        <div className="text-[24px] font-bold leading-none text-[#0f7a56]">{scoreText(sub.score)}</div>
-                        <div className="mt-1 text-[10.5px] text-[#98a1b3]">
+                        <div className="text-[24px] font-bold leading-none text-[var(--ui-status-success-text)]">{scoreText(sub.score)}</div>
+                        <div className="mt-1 text-[10.5px] text-ui-tertiary">
                           / {scoreText(exam.totalScore)} · {rate}%
                         </div>
                       </div>
@@ -135,34 +134,34 @@ export function StudentHome() {
                   </div>
 
                   <div>
-                    <div className="text-[16px] font-semibold leading-snug text-[#1a2338]">{exam.title}</div>
+                    <div className="text-[16px] font-semibold leading-snug text-ui-primary [overflow-wrap:anywhere]">{exam.title}</div>
                     {exam.description ? (
-                      <div className="mt-1 line-clamp-2 text-[12.5px] leading-6 text-[#7b86a0]">{exam.description}</div>
+                      <div className="mt-1 line-clamp-2 text-[12.5px] leading-6 text-ui-secondary [overflow-wrap:anywhere]" title={exam.description}>{exam.description}</div>
                     ) : null}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 rounded-xl bg-[#f8f9fd] px-3 py-2.5">
+                  <div className="grid grid-cols-3 gap-2 rounded-xl bg-ui-subtle px-3 py-2.5">
                     <div>
-                      <div className="text-[10.5px] text-[#98a1b3]">试卷</div>
-                      <div className="mt-0.5 text-[13px] font-semibold text-[#26304a]">{exam.questionCount} 题</div>
+                      <div className="text-[10.5px] text-ui-tertiary">试卷</div>
+                      <div className="mt-0.5 text-[13px] font-semibold text-ui-primary">{exam.questionCount} 题</div>
                     </div>
                     <div>
-                      <div className="text-[10.5px] text-[#98a1b3]">时长</div>
-                      <div className="mt-0.5 text-[13px] font-semibold text-[#26304a]">{exam.durationMin} 分钟</div>
+                      <div className="text-[10.5px] text-ui-tertiary">时长</div>
+                      <div className="mt-0.5 text-[13px] font-semibold text-ui-primary">{exam.durationMin} 分钟</div>
                     </div>
                     <div>
-                      <div className="text-[10.5px] text-[#98a1b3]">教师</div>
-                      <div className="mt-0.5 truncate text-[13px] font-semibold text-[#26304a]">{exam.teacherName}</div>
+                      <div className="text-[10.5px] text-ui-tertiary">教师</div>
+                      <div className="mt-0.5 text-[13px] font-semibold text-ui-primary [overflow-wrap:anywhere]">{exam.teacherName}</div>
                     </div>
                   </div>
 
                   {sub?.submittedAt ? (
-                    <div className="text-[11.5px] text-[#98a1b3]">提交于 {formatDate(sub.submittedAt)}</div>
+                    <div className="text-[11.5px] text-ui-tertiary">提交于 {formatDate(sub.submittedAt)}</div>
                   ) : null}
 
                   <div className="mt-auto flex flex-wrap items-center gap-2">
                     {exam.status === 'closed' && !sub ? (
-                      <span className="text-[12.5px] text-[#7b86a0]">考试已结束</span>
+                      <span className="text-[12.5px] text-ui-secondary">考试已结束</span>
                     ) : inProgress ? (
                       <Button type="primary" size="small" icon={<PlayCircleOutlined />} onClick={() => navigate(`/student/exam/${exam.id}`)}>
                         继续作答
@@ -176,7 +175,7 @@ export function StudentHome() {
                         开始作答
                       </Button>
                     )}
-                    {showScore ? <Tag bordered={false} color="success">已出分</Tag> : null}
+                    {showScore ? <Pill tone="green">已出分</Pill> : null}
                   </div>
                 </Card>
               </Col>

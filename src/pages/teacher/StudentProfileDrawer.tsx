@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Avatar, Drawer, Skeleton, Table, Typography } from 'antd';
+import { App as AntApp, Avatar, Button, Drawer, Skeleton, Table, Typography } from 'antd';
 import type { TableProps } from 'antd';
 import {
   AimOutlined,
@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import { api } from '../../api';
 import type { StudentProfile } from '../../../shared/types';
-import { Panel, Pill, StatCard } from '../../ui';
+import { EmptyState, Panel, Pill, StatCard } from '../../ui';
 import { formatDate, scoreText } from '../../format';
 import { CHART_COLORS, Chart, axisLabel, chartTooltip, splitLine } from '../../charts/Chart';
 
@@ -31,19 +31,23 @@ export function StudentProfileDrawer({
 }) {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const { message } = AntApp.useApp();
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!open || !studentId) return;
     let alive = true;
     setLoading(true);
-    setError('');
+    setLoadFailed(false);
     api<StudentProfile>(`/api/teacher/students/${studentId}/profile`)
       .then((data) => {
         if (alive) setProfile(data);
       })
       .catch((err) => {
-        if (alive) setError(err instanceof Error ? err.message : '加载失败');
+        if (!alive) return;
+        setLoadFailed(true);
+        void message.error({ key: 'teacher-student-profile-load', content: err instanceof Error ? err.message : '加载失败' });
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -51,7 +55,7 @@ export function StudentProfileDrawer({
     return () => {
       alive = false;
     };
-  }, [open, studentId]);
+  }, [open, studentId, message, refreshKey]);
 
   useEffect(() => {
     if (!open) setProfile(null);
@@ -74,14 +78,14 @@ export function StudentProfileDrawer({
         right: 0,
         itemWidth: 14,
         itemHeight: 8,
-        textStyle: { color: '#7b86a0', fontSize: 11 },
+        textStyle: { color: 'var(--ui-content-secondary)', fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: labels,
         boundaryGap: false,
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
         axisLabel: axisLabel({ interval: 0, rotate: exams.length > 4 ? 18 : 0 }),
       },
       yAxis: {
@@ -100,20 +104,8 @@ export function StudentProfileDrawer({
           data: studentValues,
           lineStyle: { width: 3, color: CHART_COLORS[0] },
           itemStyle: { color: CHART_COLORS[0] },
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: 'rgba(59,99,243,.22)' },
-                { offset: 1, color: 'rgba(59,99,243,.01)' },
-              ],
-            },
-          },
-          label: { show: true, position: 'top', color: '#3358e8', fontSize: 10.5, formatter: '{c}%' },
+          areaStyle: { color: 'var(--ui-status-info-bg)' },
+          label: { show: true, position: 'top', color: 'var(--ui-action-primary)', fontSize: 10.5, formatter: '{c}%' },
         },
         {
           name: '班级平均',
@@ -121,8 +113,8 @@ export function StudentProfileDrawer({
           smooth: true,
           symbolSize: 5,
           data: classValues,
-          lineStyle: { width: 1.5, type: 'dashed', color: '#12b886' },
-          itemStyle: { color: '#12b886' },
+          lineStyle: { width: 1.5, type: 'dashed', color: 'var(--ui-status-success-accent)' },
+          itemStyle: { color: 'var(--ui-status-success-accent)' },
         },
       ],
     };
@@ -139,13 +131,13 @@ export function StudentProfileDrawer({
         right: 0,
         itemWidth: 14,
         itemHeight: 8,
-        textStyle: { color: '#7b86a0', fontSize: 11 },
+        textStyle: { color: 'var(--ui-content-secondary)', fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: latest.questions.map((question) => `第${question.seq}题`),
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e6eaf3' } },
+        axisLine: { lineStyle: { color: 'var(--ui-border-default)' } },
         axisLabel: axisLabel(),
       },
       yAxis: {
@@ -161,14 +153,14 @@ export function StudentProfileDrawer({
           barWidth: '32%',
           data: latest.questions.map((question) => question.score),
           itemStyle: { color: CHART_COLORS[0], borderRadius: [6, 6, 0, 0] },
-          label: { show: true, position: 'top', color: '#4b5670', fontSize: 10.5 },
+          label: { show: true, position: 'top', color: 'var(--ui-content-secondary)', fontSize: 10.5 },
         },
         {
           name: '班级平均',
           type: 'bar',
           barWidth: '32%',
           data: latest.questions.map((question) => question.classAvg),
-          itemStyle: { color: '#c9d7ff', borderRadius: [6, 6, 0, 0] },
+          itemStyle: { color: 'var(--ui-border-strong)', borderRadius: [6, 6, 0, 0] },
         },
       ],
     };
@@ -195,7 +187,7 @@ export function StudentProfileDrawer({
     {
       title: '考试',
       dataIndex: 'title',
-      render: (value: string) => <span className="font-medium text-[#26304a]">{value}</span>,
+      render: (value: string) => <span className="font-medium text-ui-primary [overflow-wrap:anywhere]">{value}</span>,
     },
     {
       title: '得分',
@@ -213,13 +205,13 @@ export function StudentProfileDrawer({
     {
       title: '得分率',
       width: 74,
-      render: (_, row) => <span className="tabular-nums text-[#5b6684]">{percent(row.score, row.totalScore)}%</span>,
+      render: (_, row) => <span className="tabular-nums text-ui-secondary">{percent(row.score, row.totalScore)}%</span>,
     },
     {
       title: '班级排名',
       width: 92,
       render: (_, row) => (
-        <span className="tabular-nums text-[#5b6684]">
+        <span className="tabular-nums text-ui-secondary">
           {row.classRank} / {row.classSize}
         </span>
       ),
@@ -242,24 +234,25 @@ export function StudentProfileDrawer({
       width="min(780px, 100vw)"
       title="学生画像"
       destroyOnHidden
-      styles={{ body: { padding: 20, background: '#f7f9fd' } }}
+      styles={{ body: { padding: 'clamp(12px, 3vw, 20px)', background: 'var(--ui-surface-subtle)' } }}
     >
-      {error ? <div className="rounded-xl bg-[#fdeeee] px-4 py-3 text-[12.5px] text-[#bf3737]">{error}</div> : null}
-      {loading || !profile ? (
-        <Skeleton active paragraph={{ rows: 12 }} />
+      {loadFailed ? (
+        <EmptyState title="学生画像暂不可用" action={<Button onClick={() => setRefreshKey((key) => key + 1)}>重试</Button>} />
+      ) : loading || !profile ? (
+        <Skeleton paragraph={{ rows: 12 }} />
       ) : (
-        <div className="grid gap-4">
-          <div className="rounded-2xl border border-[#e9ecf4] bg-white p-5">
+        <div className="content-reveal grid min-w-0 grid-cols-1 gap-4">
+          <div className="rounded-2xl border border-ui-line bg-ui-surface p-5">
             <div className="flex flex-wrap items-center gap-3">
-              <Avatar size={48} style={{ background: 'linear-gradient(135deg, #4f74ff, #2545c9)', fontSize: 18 }}>
+              <Avatar size={48} className="shrink-0" style={{ background: 'var(--ui-background-muted)', color: 'var(--ui-content-primary)', fontSize: 18 }}>
                 {profile.student.name.slice(0, 1)}
               </Avatar>
-              <div className="min-w-0">
+              <div className="min-w-0 [overflow-wrap:anywhere]">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[18px] font-semibold text-[#131a2b]">{profile.student.name}</span>
+                  <span className="text-[18px] font-semibold text-ui-primary">{profile.student.name}</span>
                   <Pill tone="teal">{profile.student.className ?? '未分班'}</Pill>
                 </div>
-                <div className="mt-1 text-[12px] text-[#98a1b3]">学号 {profile.student.studentNo || '—'}</div>
+                <div className="mt-1 text-[12px] text-ui-tertiary">学号 {profile.student.studentNo || '—'}</div>
               </div>
               <div className="ml-auto flex flex-wrap items-center gap-2">
                 {profile.summary.latestRank != null ? (
@@ -269,7 +262,7 @@ export function StudentProfileDrawer({
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatCard
                 label="平均得分率"
                 value={profile.summary.avg}

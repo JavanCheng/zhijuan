@@ -1,0 +1,192 @@
+/* ── 登录左侧 ───────────────────────────────────────── */
+.login-hero {
+  position: relative;
+  overflow: hidden;
+  color: var(--ui-content-primary);
+  background: var(--ui-accent-surface);
+  border-inline-end: 1px solid var(--ui-border-default);
+}
+
+/* 左侧只保留品牌 + 工作台标签，其余为纯图形 */
+.hero-workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--ui-border-default);
+  background: var(--ui-surface-subtle);
+  padding: 7px 14px;
+  border-radius: var(--ui-radius-pill);
+  font-size: 12.5px;
+  line-height: 1;
+  color: var(--ui-content-secondary);
+  white-space: nowrap;
+}
+
+.hero-workspace-dot {
+  background: var(--ui-accent-text);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.login-hero-art {
+  /* 宽高同时受容器与视口高度约束，避免图形被 hero 的 overflow 裁掉 */
+  width: min(100%, 560px, calc((100vh - 220px) * 0.857));
+  height: auto;
+  overflow: visible;
+}
+
+/* ── 登录右半：只有一个标题 + 表单，靠字号对比和单一间距单位立住 ── */
+.login-panel {
+  width: 100%;
+  max-width: 352px;
+  margin-inline: auto;
+}
+
+.login-title {
+  margin: 0;
+  color: var(--ui-content-primary);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.login-form {
+  margin-top: 36px;
+}
+
+/* 统一 24px 节奏：字段之间、密码与按钮之间完全一致，不做无来由的留白 */
+.login-form .ant-form-item {
+  margin-bottom: 24px;
+}
+
+.login-form .ant-form-item-label {
+  padding-bottom: 8px;
+}
+
+.login-form .ant-form-item-label > label {
+  height: auto;
+  color: var(--ui-content-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.login-form .ant-input,
+.login-form .ant-input-affix-wrapper {
+  border-radius: var(--ui-radius-md);
+  font-size: 14.5px;
+}
+
+.login-form .ant-input-affix-wrapper {
+  padding-inline: 14px;
+}
+
+.login-form .ant-input-affix-wrapper .ant-input {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.login-form .login-submit.ant-btn {
+  margin-top: 0;
+  border-radius: var(--ui-radius-md);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: none;
+}
+
+
+.role-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 17px;
+  border: 1px solid var(--ui-border-default);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-surface-default);
+  transition: border-color var(--ui-motion-card);
+}
+
+.role-card:hover {
+  border-color: var(--ui-accent-line);
+}
+
+.role-card-name {
+  flex: 1;
+  color: var(--ui-content-primary);
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.role-card-arrow {
+  color: var(--ui-content-tertiary);
+  transition: color var(--ui-motion-card);
+}
+
+.role-card:hover .role-card-arrow {
+  color: var(--ui-content-primary);
+}
+
+.role-card-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: var(--ui-radius-lg);
+  font-size: 19px;
+  color: var(--ui-accent-text);
+  background: var(--ui-accent-selected);
+}
+
+.roster-class-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 108px;
+  padding: 14px 15px;
+  border: 1px solid var(--ui-border-default);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-surface-default);
+  text-align: left;
+  transition: border-color var(--ui-motion-card);
+}
+
+.roster-class-card:hover {
+  border-color: var(--ui-border-strong);
+}
+
+.roster-class-card.is-active {
+  border-color: var(--ui-content-tertiary);
+  background: var(--ui-state-selected);
+}
+
+.roster-class-all {
+  background: var(--ui-background-muted);
+}
+
+.roster-class-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  border-color: var(--ui-border-strong);
+  background: var(--ui-background-page);
+  color: var(--ui-content-primary);
+}
+
+.roster-class-add:hover {
+  border-color: var(--ui-content-tertiary);
+  background: var(--ui-state-hover);
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .role-card, .role-card-arrow, .portal-card { transition: none; }
+}

@@ -1,14 +1,40 @@
-import { useId, useState, type CSSProperties, type ReactNode } from 'react';
-import { Typography } from 'antd';
+import { forwardRef, useId, useState, type ReactNode } from 'react';
+import { Button, Skeleton, Tooltip, Typography, type ButtonProps, type TooltipProps } from 'antd';
 import type { ExamStatus, QuestionSection, QuestionType, SubmissionStatus } from '../shared/types';
 import { stripHtml, scoreText } from './format';
 import { BRAND } from './brand';
 
 const { Title } = Typography;
 
+export function UiTooltip({ children, ...props }: TooltipProps) {
+  return <Tooltip mouseEnterDelay={0.3} fresh trigger={['hover', 'focus']} autoAdjustOverflow {...props}>{children}</Tooltip>;
+}
+
+type IconButtonProps = ButtonProps & { label: string; tooltip?: ReactNode | false };
+
+export const IconButton = forwardRef<HTMLButtonElement | HTMLAnchorElement, IconButtonProps>(function IconButton(
+  { label, tooltip, className, type = 'text', disabled, ...props }, ref,
+) {
+  const button = <Button ref={ref} type={type} disabled={disabled} aria-label={label} className={`ui-icon-button ${className ?? ''}`} {...props} />;
+  return (
+    <UiTooltip title={disabled || tooltip === false ? null : (tooltip ?? label)}>
+      {button}
+    </UiTooltip>
+  );
+});
+
+export function CompactButton({ className, ...props }: ButtonProps) {
+  return <Button className={`ui-button-xs ${className ?? ''}`} {...props} />;
+}
+
+export function ContentSkeleton({ rows = 4, className = '' }: { rows?: number; className?: string }) {
+  return <div className={`ui-content-skeleton ${className}`} role="status" aria-label="正在加载"><Skeleton paragraph={{ rows }} /></div>;
+}
+
+
 /** 统一的页面容器：宽度、左右留白、上下间距 */
 export function Page({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`page-shell page-enter ${className}`}>{children}</div>;
+  return <div className={`page-shell ${className}`}>{children}</div>;
 }
 
 /** 统一的页头：标题、副标题、右侧操作区，可选返回链接 */
@@ -34,7 +60,7 @@ export function PageHeader({
           <Title level={3} className="page-title">
             {title}
           </Title>
-          {subtitle ? <div className="mt-2 text-[13px] leading-6 text-[#7b86a0]">{subtitle}</div> : null}
+          {subtitle ? <div className="mt-2 text-[13px] leading-6 text-ui-secondary">{subtitle}</div> : null}
         </div>
         {extra ? <div className="flex flex-wrap items-center gap-2">{extra}</div> : null}
       </div>
@@ -105,16 +131,6 @@ export function SubmissionStatusTag({ status }: { status: SubmissionStatus }) {
   );
 }
 
-const TONE_STYLE: Record<PillTone, { color: string; soft: string }> = {
-  blue: { color: '#3358e8', soft: '#edf1ff' },
-  purple: { color: '#7048c8', soft: '#f3edff' },
-  teal: { color: '#0b7a63', soft: '#e8f8f3' },
-  amber: { color: '#b87711', soft: '#fff5e5' },
-  red: { color: '#c43c3c', soft: '#fdeeee' },
-  gray: { color: '#626d85', soft: '#f1f3f8' },
-  green: { color: '#0f7a56', soft: '#e9f8f1' },
-};
-
 /** 统一的指标卡：图标 + 标签 + 主数值 + 辅助说明 */
 export function StatCard({
   label,
@@ -133,11 +149,10 @@ export function StatCard({
   hint?: ReactNode;
   precision?: number;
 }) {
-  const palette = TONE_STYLE[tone];
   const display =
     typeof value === 'number' && precision != null ? value.toFixed(precision).replace(/\.0+$/, '') : value;
   return (
-    <div className="stat-card" style={{ '--tone': palette.color, '--tone-soft': palette.soft } as CSSProperties}>
+    <div className={`stat-card pill-${tone}`}>
       <div className="stat-card-body">
         <div className="flex items-start justify-between gap-3">
           <div className="stat-label">{label}</div>
@@ -196,11 +211,11 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center px-5 py-14 text-center">
-      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-[#eef2ff] text-[22px] text-[#3358e8]">
+      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-ui-subtle text-[22px] text-ui-primary">
         {icon ?? '✦'}
       </div>
-      <div className="mt-4 text-[16px] font-semibold text-[#1a2338]">{title}</div>
-      {description ? <div className="mt-2 max-w-[420px] text-[12.5px] leading-6 text-[#7b86a0]">{description}</div> : null}
+      <div className="mt-4 text-[16px] font-semibold text-ui-primary">{title}</div>
+      {description ? <div className="mt-2 max-w-[420px] text-[12.5px] leading-6 text-ui-secondary">{description}</div> : null}
       {action ? <div className="mt-5 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>
   );
@@ -275,20 +290,20 @@ export function SectionMaterial({
   const [open, setOpen] = useState(defaultOpen);
   const hasBody = stripHtml(section.html).length > 0;
   return (
-    <div className={`mb-4 rounded-xl border border-[#e4e8f2] bg-[#fbfcff] p-4 ${className}`}>
+    <div className={`mb-4 rounded-xl border border-ui-line bg-ui-muted p-4 ${className}`}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-lg bg-[var(--brand-strong)] px-2.5 py-1 text-[12.5px] font-semibold text-white">{section.title}</span>
+        <span className="rounded-lg bg-ui-selected px-2.5 py-1 text-[12.5px] font-semibold text-ui-primary">{section.title}</span>
         {section.score != null ? (
-          <span className="text-[12px] text-[#7b86a0]">本大题 {scoreText(section.score)} 分</span>
+          <span className="text-[12px] text-ui-secondary">本大题 {scoreText(section.score)} 分</span>
         ) : null}
         {hasBody ? (
-          <button
-            type="button"
+          <CompactButton
+            aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
-            className="ml-auto rounded-lg border border-[#e4e8f2] bg-white px-2 py-1 text-[11.5px] text-[#5b6479] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+            className="ml-auto text-[11.5px]"
           >
             {open ? '收起材料' : '展开材料'}
-          </button>
+          </CompactButton>
         ) : null}
       </div>
       {hasBody && open ? <div className="stem section-stem" dangerouslySetInnerHTML={{ __html: section.html }} /> : null}

@@ -1,0 +1,176 @@
+/* Desktop: keep the links and their icons in place while only width changes. */
+.app-frame {
+  display: flex;
+  min-height: 100dvh;
+  background: var(--ui-background-page);
+}
+
+.app-main { min-width: 0; flex: 1 1 0; }
+
+.app-sider {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  flex: 0 0 auto;
+  width: 248px;
+  height: 100dvh;
+  overflow: auto;
+  background: var(--ui-accent-surface);
+  border-inline-end: 1px solid var(--ui-border-default);
+  transition: width var(--ui-motion-sider);
+}
+
+.sider-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 80px;
+  margin-inline: 10px;
+  padding: 12px 2px;
+  border-radius: var(--ui-radius-md);
+}
+
+.sider-brand-copy, .sider-nav-label, .sider-footer {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sider-brand-name {
+  color: var(--ui-accent-text);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.sider-brand-sub {
+  color: var(--ui-content-tertiary);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.sider-section-label {
+  padding: 18px 22px 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--ui-content-tertiary);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.sider-nav { display: grid; gap: 4px; padding: 0 10px; }
+
+.sider-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 42px;
+  min-width: 0;
+  padding-inline: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-md);
+  color: var(--ui-content-secondary);
+  font-size: 13.5px;
+}
+
+.sider-nav-item:hover { color: var(--ui-content-primary); background: var(--ui-state-hover); }
+.sider-nav-item.is-active {
+  color: var(--ui-accent-text);
+  background: var(--ui-accent-selected);
+  border-color: var(--ui-accent-line);
+}
+.sider-nav-item.is-active:hover, .sider-nav-item.is-active:active { border-color: var(--ui-accent-text); }
+.sider-nav-item:not(.is-active):active { background: var(--ui-state-pressed); }
+
+.sider-nav-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 20px;
+  font-size: 15px;
+  color: currentColor;
+}
+
+.sider-nav-label { text-overflow: ellipsis; }
+
+.sider-footer {
+  padding: 14px 14px 16px;
+  border-top: 1px solid var(--ui-border-default);
+  color: var(--ui-content-tertiary);
+}
+
+.app-frame:not(.is-mobile) .app-sider.is-collapsed { width: 64px; }
+.app-frame:not(.is-mobile) .app-sider.is-collapsed :is(.sider-brand-copy, .sider-section-label, .sider-nav-label, .sider-footer) { opacity: 0; }
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  background: var(--ui-surface-default);
+  border-bottom: 1px solid var(--ui-border-default);
+}
+
+.topbar-crumb {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--ui-content-tertiary);
+  font-size: 12.5px;
+}
+
+.topbar-crumb :is(span, strong) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-crumb strong { color: var(--ui-content-primary); font-weight: 600; font-size: 13px; }
+.topbar-sep { flex: none; color: var(--ui-content-tertiary); }
+
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 4px 8px 4px 4px;
+  border-radius: var(--ui-radius-pill);
+  background: transparent;
+  color: var(--ui-content-primary);
+  cursor: pointer;
+}
+
+.user-trigger:hover { background: var(--ui-state-hover); }
+.user-trigger:active { background: var(--ui-state-pressed); }
+
+.sider-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: var(--ui-state-scrim);
+}
+
+.app-frame.is-mobile .app-sider {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 60;
+  width: min(248px, 85vw);
+  transition: transform var(--ui-motion-sider);
+}
+
+.app-frame.is-mobile .app-sider.is-collapsed { transform: translateX(-100%); }
+
+@media (width < 992px) {
+  .app-topbar.ant-layout-header { padding-inline: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sider, .app-frame.is-mobile .app-sider { transition: none; }
+}
+
+
+.sider-close.ant-btn { position: absolute; inset-block-start: 18px; inset-inline-end: 8px; }
+.app-frame.is-mobile .sider-brand { margin-inline-end: 48px; }

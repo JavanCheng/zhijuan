@@ -1,3 +1,5 @@
+import { useUiTheme } from '../appearance';
+import { readUiColors } from '../theme';
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts/core';
 import { BarChart, LineChart, PieChart, RadarChart } from 'echarts/charts';
@@ -38,26 +40,43 @@ echarts.use([
 
 /** 统一图表配色，顺序与图例一致 */
 export const CHART_COLORS = [
-  '#3b63f3',
-  '#12b886',
-  '#f29d38',
-  '#8b5cf6',
-  '#e8590c',
-  '#0ca678',
-  '#d6336c',
-  '#1c7ed6',
+  'var(--ui-status-info-text)', 'var(--ui-status-success-text)', 'var(--ui-status-warning-text)',
+  'var(--ui-status-danger-text)', 'var(--ui-content-primary)', 'var(--ui-status-info-accent)',
+  'var(--ui-status-success-accent)', 'var(--ui-status-danger-accent)',
 ];
 
-export const CHART_TEXT = '#6b7488';
-export const CHART_GRID = '#eef1f7';
+export const CHART_TEXT = 'var(--ui-content-secondary)';
+export const CHART_GRID = 'var(--ui-border-strong)';
 
 export const chartTooltip = {
-  backgroundColor: 'rgba(15, 23, 42, 0.94)',
-  borderWidth: 0,
+  backgroundColor: 'var(--ui-surface-default)',
+  borderColor: 'var(--ui-border-strong)',
+  borderWidth: 1,
   padding: [10, 12],
-  textStyle: { color: '#f8fafc', fontSize: 12 },
-  extraCssText: 'border-radius: 10px; box-shadow: 0 12px 32px rgba(15,23,42,.28);',
+  textStyle: { color: 'var(--ui-content-primary)', fontSize: 12 },
+  extraCssText: 'border-radius: var(--ui-radius-lg); box-shadow: none;',
 } as const;
+
+/** Resolve only option values that refer to semantic colors, leaving callbacks and data untouched. */
+function resolveChartColors(option: EChartsCoreOption) {
+  const token = /^var\(--ui-([a-z-]+)\)$/;
+  const names = new Set<string>();
+  function visit(value: unknown, resolve?: Record<string, string>): unknown {
+    if (typeof value === 'string') {
+      const match = token.exec(value);
+      if (!match) return value;
+      names.add(match[1]);
+      return resolve?.[match[1]] ?? value;
+    }
+    if (Array.isArray(value)) return value.map((item) => visit(item, resolve));
+    if (value && Object.getPrototypeOf(value) === Object.prototype) {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, visit(item, resolve)]));
+    }
+    return value;
+  }
+  visit(option);
+  return visit(option, readUiColors([...names])) as EChartsCoreOption;
+}
 
 export function axisLabel(extra: Record<string, unknown> = {}) {
   return { color: CHART_TEXT, fontSize: 11.5, ...extra };
@@ -78,8 +97,10 @@ export function Chart({
   className?: string;
   ariaLabel?: string;
 }) {
+  const { dark, reduced } = useUiTheme();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
+  const lastOption = useRef<EChartsCoreOption | null>(null);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -94,12 +115,27 @@ export function Chart({
       observer.disconnect();
       chart.dispose();
       chartRef.current = null;
+      lastOption.current = null;
     };
   }, []);
 
   useEffect(() => {
-    chartRef.current?.setOption(option, { notMerge: true });
-  }, [option]);
+    const resolved = resolveChartColors(option);
+    function updateTextAndColors(notMerge: boolean) {
+      const fontFamily = getComputedStyle(document.documentElement).getPropertyValue('--ui-font-body').trim();
+      chartRef.current?.setOption({
+        color: Object.values(readUiColors(CHART_COLORS.map((color) => color.slice('var(--ui-'.length, -1)))),
+        ...resolved,
+        textStyle: { fontFamily, ...resolved.textStyle },
+        animation: !reduced && (resolved.animation ?? false),
+      }, { notMerge });
+    }
+    updateTextAndColors(lastOption.current !== option);
+    lastOption.current = option;
+    const observer = new MutationObserver(() => updateTextAndColors(false));
+    observer.observe(document.documentElement, { attributeFilter: ['lang'] });
+    return () => observer.disconnect();
+  }, [option, dark, reduced]);
 
   return (
     <div

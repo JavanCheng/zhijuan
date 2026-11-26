@@ -1,0 +1,103 @@
+/* ── 学情看板 ───────────────────────────────────────── */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--ui-border-default);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-surface-default);
+}
+
+.filter-field {
+  display: grid;
+  gap: 6px;
+  min-width: min(190px, 100%);
+}
+
+.filter-label {
+  color: var(--ui-content-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.filter-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--ui-content-secondary);
+  font-size: 11.5px;
+}
+
+.insight-strip {
+  display: grid;
+  gap: 10px;
+  padding: 15px 17px;
+  border: 1px solid var(--ui-border-default);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-surface-subtle);
+}
+
+.insight-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--ui-content-secondary);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.insight-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-content-primary);
+  font-size: 12px;
+}
+
+.rank-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-content-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rank-badge.is-top {
+  background: var(--ui-status-warning-bg);
+  color: var(--ui-status-warning-text);
+}
+
+.student-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.class-students-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(212px, 100%), 1fr));
+  gap: 8px;
+}
+
+.class-student-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--ui-border-default);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-background-page);
+}

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Alert,
   App as AntApp,
   Button,
   Card,
@@ -25,7 +24,7 @@ import {
 } from '@ant-design/icons';
 import { api, post } from '../../api';
 import type { ExamDetailTeacher, SubmissionRow } from '../../../shared/types';
-import { ExamStatusTag, Page, PageHeader, Pill, StatCard, SubmissionStatusTag } from '../../ui';
+import { EmptyState, ExamStatusTag, Page, PageHeader, Pill, StatCard, SubmissionStatusTag } from '../../ui';
 import { formatDate, scoreText } from '../../format';
 
 const { Text } = Typography;
@@ -33,8 +32,8 @@ const { Text } = Typography;
 function scoreColor(score: number | null, total: number): string | undefined {
   if (score == null || total <= 0) return undefined;
   const rate = (score / total) * 100;
-  if (rate >= 85) return '#0f7a56';
-  if (rate < 60) return '#bf3737';
+  if (rate >= 85) return 'var(--ui-status-success-text)';
+  if (rate < 60) return 'var(--ui-status-danger-text)';
   return undefined;
 }
 
@@ -42,36 +41,40 @@ export function TeacherGrading() {
   const { id } = useParams();
   const examId = Number(id);
   const navigate = useNavigate();
-  const { modal } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
 
   const [exam, setExam] = useState<ExamDetailTeacher | null>(null);
   const [rows, setRows] = useState<SubmissionRow[] | null>(null);
-  const [error, setError] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<'all' | 'review'>('all');
   const [classFilter, setClassFilter] = useState<number | 'all'>('all');
   const [keyword, setKeyword] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isCurrent: () => boolean = () => true, reportFailure = true) => {
     try {
       const [detail, subs] = await Promise.all([
         api<ExamDetailTeacher>(`/api/teacher/exams/${examId}`),
         api<SubmissionRow[]>(`/api/teacher/exams/${examId}/submissions`),
       ]);
+      if (!isCurrent()) return;
       setExam(detail);
       setRows(subs);
-      setError('');
+      setLoadFailed(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      if (!isCurrent()) return;
+      setLoadFailed(true);
+      if (reportFailure) void message.error({ key: 'teacher-grading-load', content: err instanceof Error ? err.message : '加载失败' });
     }
-  }, [examId]);
+  }, [message, examId]);
 
   useEffect(() => {
-    void load();
+    let active = true;
+    void load(() => active);
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void load();
+      if (document.visibilityState === 'visible') void load(() => active, false);
     }, 3000);
-    return () => window.clearInterval(timer);
+    return () => { active = false; window.clearInterval(timer); };
   }, [load]);
 
   const classOptions = useMemo(() => {
@@ -121,7 +124,7 @@ export function TeacherGrading() {
           await post(`/api/teacher/exams/${examId}/confirm-auto`);
           await load();
         } catch (err) {
-          setError(err instanceof Error ? err.message : '操作失败');
+          void message.error(err instanceof Error ? err.message : '操作失败');
         } finally {
           setBusy(false);
         }
@@ -144,7 +147,7 @@ export function TeacherGrading() {
           await post(`/api/teacher/exams/${examId}/publish-results`, { published: next });
           await load();
         } catch (err) {
-          setError(err instanceof Error ? err.message : '操作失败');
+          void message.error(err instanceof Error ? err.message : '操作失败');
         } finally {
           setBusy(false);
         }
@@ -155,7 +158,7 @@ export function TeacherGrading() {
   if (!exam || rows === null) {
     return (
       <Page>
-        {error ? <Alert type="error" showIcon message={error} /> : <Spin />}
+        {loadFailed ? <EmptyState title="批改列表暂不可用" action={<Button onClick={() => void load()}>重试</Button>} /> : <Spin />}
       </Page>
     );
   }
@@ -165,9 +168,9 @@ export function TeacherGrading() {
       title: '学生',
       width: 150,
       render: (_, row) => (
-        <div className="leading-tight">
-          <div className="text-[13px] font-medium text-[#26304a]">{row.studentName}</div>
-          <div className="text-[10.5px] text-[#98a1b3]">{row.studentNo}</div>
+        <div className="leading-tight [overflow-wrap:anywhere]">
+          <div className="text-[13px] font-medium text-ui-primary">{row.studentName}</div>
+          <div className="text-[10.5px] text-ui-tertiary">{row.studentNo}</div>
         </div>
       ),
     },
@@ -185,8 +188,8 @@ export function TeacherGrading() {
         const rate = Math.round((row.answered / Math.max(1, row.questionCount)) * 100);
         return (
           <div className="flex items-center gap-2">
-            <Progress percent={rate} showInfo={false} size="small" strokeColor="#3358e8" style={{ margin: 0, width: 56 }} />
-            <span className="tabular-nums text-[11.5px] text-[#7b86a0]">
+            <Progress percent={rate} showInfo={false} size="small" strokeColor="var(--ui-action-primary)" style={{ margin: 0, width: 56 }} />
+            <span className="tabular-nums text-[11.5px] text-ui-secondary">
               {row.answered}/{row.questionCount}
             </span>
           </div>
@@ -196,7 +199,7 @@ export function TeacherGrading() {
     {
       title: '自动分',
       width: 84,
-      render: (_, row) => <span className="tabular-nums text-[#7b86a0]">{scoreText(row.autoScore)}</span>,
+      render: (_, row) => <span className="tabular-nums text-ui-secondary">{scoreText(row.autoScore)}</span>,
     },
     {
       title: '最终分',
@@ -204,7 +207,7 @@ export function TeacherGrading() {
       render: (_, row) => (
         <span className="font-semibold tabular-nums" style={{ color: scoreColor(row.finalScore ?? row.autoScore, exam.totalScore) }}>
           {scoreText(row.finalScore ?? row.autoScore)}
-          <span className="ml-1 text-[10.5px] font-normal text-[#b0b7c7]">/ {scoreText(exam.totalScore)}</span>
+          <span className="ml-1 text-[10.5px] font-normal text-ui-tertiary">/ {scoreText(exam.totalScore)}</span>
         </span>
       ),
     },
@@ -278,7 +281,6 @@ export function TeacherGrading() {
         }
       />
 
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
       <div className="mb-5 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         <StatCard
@@ -317,7 +319,7 @@ export function TeacherGrading() {
 
       <Card className="mb-4" styles={{ body: { padding: '14px 16px' } }}>
         <div className="flex flex-wrap items-center gap-3">
-          <Segmented
+          <Segmented className="max-w-full overflow-x-auto"
             value={filter}
             onChange={(value) => setFilter(value as 'all' | 'review')}
             options={[
@@ -328,18 +330,18 @@ export function TeacherGrading() {
           <Select
             value={classFilter}
             onChange={setClassFilter}
-            style={{ width: 150 }}
+            style={{ width: 150, maxWidth: '100%' }}
             options={[{ value: 'all', label: '全部班级' }, ...classOptions]}
           />
           <Input
             allowClear
-            prefix={<SearchOutlined className="text-[#98a1b3]" />}
+            prefix={<SearchOutlined className="text-ui-tertiary" />}
             placeholder="搜索姓名或学号"
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            style={{ width: 220 }}
+            style={{ width: 220, maxWidth: '100%' }}
           />
-          <div className="ml-auto flex items-center gap-3 text-[11.5px] text-[#98a1b3]">
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto text-[11.5px] text-ui-tertiary">
             <span>筛选结果 {visible.length} 份</span>
             {classFilter !== 'all' || keyword ? (
               <Button

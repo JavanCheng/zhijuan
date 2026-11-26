@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Alert,
   App as AntApp,
   Button,
   Card,
@@ -26,7 +25,7 @@ import {
 } from '@ant-design/icons';
 import { api, del, post } from '../../api';
 import type { AnalyticsMeta, ExamSummary } from '../../../shared/types';
-import { EmptyState, ExamStatusTag, Page, PageHeader, Pill, StatCard } from '../../ui';
+import { EmptyState, ExamStatusTag, IconButton, Page, PageHeader, Pill, StatCard } from '../../ui';
 
 const { TextArea } = Input;
 
@@ -51,31 +50,45 @@ interface CreateForm {
 
 export function TeacherHome() {
   const navigate = useNavigate();
-  const { modal } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
   const [form] = Form.useForm<CreateForm>();
 
   const [exams, setExams] = useState<ExamCard[] | null>(null);
   const [meta, setMeta] = useState<AnalyticsMeta | null>(null);
-  const [error, setError] = useState('');
-  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pending, setPending] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isCurrent: () => boolean = () => true) => {
     try {
       const data = await api<ExamCard[]>('/api/teacher/exams');
+      if (!isCurrent()) return;
       setExams(data);
-      setError('');
+      setLoadFailed(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      if (!isCurrent()) return;
+      setLoadFailed(true);
+      void message.error({ key: 'teacher-exams-load', content: err instanceof Error ? err.message : '加载失败' });
     }
-  }, []);
+  }, [message]);
 
   useEffect(() => {
-    void load();
-    api<RuntimeInfo>('/api/auth/runtime').then(setRuntime).catch(() => setRuntime(null));
-    api<AnalyticsMeta>('/api/teacher/analytics/meta').then(setMeta).catch(() => setMeta(null));
-  }, [load]);
+    let active = true;
+    void load(() => active);
+    api<RuntimeInfo>('/api/auth/runtime').then((runtime) => {
+      if (active && !runtime.python) {
+        void message.warning({
+          key: 'teacher-python-runtime',
+          content: '未检测到 Python 运行时，代码题将无法评测。请查看 README 的「代码运行时」章节，或设置 PYTHON_BIN。',
+          duration: 6,
+        });
+      }
+    }).catch(() => {});
+    api<AnalyticsMeta>('/api/teacher/analytics/meta').then((data) => {
+      if (active) setMeta(data);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [load, message]);
 
   const stats = useMemo(() => {
     const list = exams ?? [];
@@ -98,7 +111,7 @@ export function TeacherHome() {
       form.resetFields();
       navigate(`/teacher/exam/${exam.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败');
+      void message.error(err instanceof Error ? err.message : '创建失败');
     } finally {
       setPending(false);
     }
@@ -116,7 +129,7 @@ export function TeacherHome() {
           await del(`/api/teacher/exams/${exam.id}`);
           await load();
         } catch (err) {
-          setError(err instanceof Error ? err.message : '删除失败');
+          void message.error(err instanceof Error ? err.message : '删除失败');
         }
       },
     });
@@ -145,17 +158,7 @@ export function TeacherHome() {
         }
       />
 
-      {runtime && !runtime.python ? (
-        <Alert
-          type="error"
-          showIcon
-          className="mb-4"
-          message="未检测到 Python 运行时，代码题将无法评测"
-          description="请查看 README 的「代码运行时」章节，或设置环境变量 PYTHON_BIN。"
-        />
-      ) : null}
 
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
       <div className="mb-5 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         <StatCard
@@ -192,11 +195,13 @@ export function TeacherHome() {
         />
       </div>
 
-      {exams === null ? (
+      {exams === null && loadFailed ? (
+        <EmptyState title="考试列表暂不可用" action={<Button onClick={() => void load()}>重试</Button>} />
+      ) : exams === null ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2].map((key) => (
             <Card key={key}>
-              <Skeleton active paragraph={{ rows: 4 }} />
+              <Skeleton paragraph={{ rows: 4 }} />
             </Card>
           ))}
         </div>
@@ -219,7 +224,7 @@ export function TeacherHome() {
           />
         </Card>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row className="content-reveal" gutter={[16, 16]}>
           {exams.map((exam) => {
             const gradedRate = exam.submissionCount
               ? Math.round((exam.gradedCount / exam.submissionCount) * 100)
@@ -227,45 +232,43 @@ export function TeacherHome() {
             return (
               <Col xs={24} md={12} xl={8} key={exam.id}>
                 <Card
-                  hoverable
-                  className="lift-card"
                   style={{ height: '100%' }}
                   styles={{ body: { height: '100%', display: 'flex', flexDirection: 'column', gap: 14 } }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <ExamStatusTag status={exam.status} />
                     {exam.resultsPublished ? <Pill tone="green">成绩已发布</Pill> : null}
-                    <span className="ml-auto text-[11px] text-[#b0b7c7]">#{exam.id}</span>
+                    <span className="ml-auto text-[11px] text-ui-tertiary">#{exam.id}</span>
                   </div>
 
                   <div>
-                    <div className="text-[16px] font-semibold leading-snug text-[#1a2338]">{exam.title}</div>
+                    <div className="text-[16px] font-semibold leading-snug text-ui-primary [overflow-wrap:anywhere]">{exam.title}</div>
                     {exam.description ? (
-                      <div className="mt-1 line-clamp-2 text-[12.5px] leading-6 text-[#7b86a0]">{exam.description}</div>
+                      <div className="mt-1 line-clamp-2 text-[12.5px] leading-6 text-ui-secondary [overflow-wrap:anywhere]" title={exam.description}>{exam.description}</div>
                     ) : null}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 rounded-xl bg-[#f8f9fd] px-3 py-2.5">
+                  <div className="grid grid-cols-3 gap-2 rounded-xl bg-ui-subtle px-3 py-2.5">
                     <div>
-                      <div className="text-[10.5px] text-[#98a1b3]">试卷</div>
-                      <div className="mt-0.5 text-[13px] font-semibold text-[#26304a]">
+                      <div className="text-[10.5px] text-ui-tertiary">试卷</div>
+                      <div className="mt-0.5 text-[13px] font-semibold text-ui-primary">
                         {exam.questionCount} 题
-                        <span className="ml-1 text-[11px] font-normal text-[#98a1b3]">{exam.totalScore} 分</span>
+                        <span className="ml-1 text-[11px] font-normal text-ui-tertiary">{exam.totalScore} 分</span>
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10.5px] text-[#98a1b3]">提交</div>
-                      <div className="mt-0.5 text-[13px] font-semibold text-[#26304a]">{exam.submissionCount} 人</div>
+                      <div className="text-[10.5px] text-ui-tertiary">提交</div>
+                      <div className="mt-0.5 text-[13px] font-semibold text-ui-primary">{exam.submissionCount} 人</div>
                     </div>
                     <div>
-                      <div className="text-[10.5px] text-[#98a1b3]">时长</div>
-                      <div className="mt-0.5 text-[13px] font-semibold text-[#26304a]">{exam.durationMin} 分钟</div>
+                      <div className="text-[10.5px] text-ui-tertiary">时长</div>
+                      <div className="mt-0.5 text-[13px] font-semibold text-ui-primary">{exam.durationMin} 分钟</div>
                     </div>
                   </div>
 
                   {exam.submissionCount > 0 ? (
                     <div>
-                      <div className="mb-1.5 flex items-center justify-between text-[11px] text-[#7b86a0]">
+                      <div className="mb-1.5 flex items-center justify-between text-[11px] text-ui-secondary">
                         <span>评分进度</span>
                         <span>
                           {exam.gradedCount} / {exam.submissionCount}
@@ -275,8 +278,8 @@ export function TeacherHome() {
                         percent={gradedRate}
                         showInfo={false}
                         size="small"
-                        strokeColor={gradedRate === 100 ? '#12b886' : '#3358e8'}
-                        trailColor="#eef1f8"
+                        strokeColor={gradedRate === 100 ? 'var(--ui-status-success-accent)' : 'var(--ui-action-primary)'}
+                        trailColor="var(--ui-background-muted)"
                       />
                     </div>
                   ) : null}
@@ -307,14 +310,11 @@ export function TeacherHome() {
                         <Button size="small" onClick={() => navigate(`/teacher/exam/${exam.id}`)}>
                           试卷详情
                         </Button>
-                        <Tooltip title="查看本场学情图表">
-                          <Button
+                        <IconButton label="查看本场学情图表"
                             size="small"
                             type="text"
                             icon={<BarChartOutlined />}
-                            onClick={() => navigate(`/teacher/analytics?examId=${exam.id}`)}
-                          />
-                        </Tooltip>
+                            onClick={() => navigate(`/teacher/analytics?examId=${exam.id}`)} />
                       </>
                     )}
                   </div>
@@ -335,7 +335,7 @@ export function TeacherHome() {
         onCancel={() => setCreating(false)}
         destroyOnHidden
       >
-        <div className="mb-4 text-[13px] text-[#7b86a0]">创建后导入 Word 试卷，确认题目无误再发布给学生。</div>
+        <div className="mb-4 text-[13px] text-ui-secondary">创建后导入 Word 试卷，确认题目无误再发布给学生。</div>
         <Form form={form} layout="vertical" initialValues={{ durationMin: 60 }} requiredMark={false}>
           <Form.Item
             label="考试名称"

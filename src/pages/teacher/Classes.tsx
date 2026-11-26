@@ -41,7 +41,7 @@ import type {
   RosterImportResult,
   RosterOverview,
 } from '../../../shared/types';
-import { EmptyState, Page, PageHeader, Pill, StatCard } from '../../ui';
+import { EmptyState, IconButton, Page, PageHeader, Pill, StatCard } from '../../ui';
 import { formatDate } from '../../format';
 
 const { Text } = Typography;
@@ -59,7 +59,7 @@ interface ClassForm {
 export function TeacherClasses() {
   const { message, modal } = AntApp.useApp();
   const [overview, setOverview] = useState<RosterOverview | null>(null);
-  const [error, setError] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [classFilter, setClassFilter] = useState<number | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -78,18 +78,23 @@ export function TeacherClasses() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<RosterImportResult | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isCurrent: () => boolean = () => true) => {
     try {
       const data = await api<RosterOverview>('/api/teacher/classes/overview');
+      if (!isCurrent()) return;
       setOverview(data);
-      setError('');
+      setLoadFailed(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      if (!isCurrent()) return;
+      setLoadFailed(true);
+      void message.error({ key: 'teacher-roster-load', content: err instanceof Error ? err.message : '加载失败' });
     }
-  }, []);
+  }, [message]);
 
   useEffect(() => {
-    void load();
+    let active = true;
+    void load(() => active);
+    return () => { active = false; };
   }, [load]);
 
   const classScopedStudents = useMemo(
@@ -225,11 +230,7 @@ export function TeacherClasses() {
 
   function removeClass(item: ManagedClass) {
     if (item.totalCount > 0) {
-      modal.info({
-        title: '暂时不能删除班级',
-        content: `${item.name} 还有 ${item.totalCount} 名学生，请先把学生移到其他班级或停用后再删除。`,
-        okText: '知道了',
-      });
+      void message.warning(`暂时不能删除班级：${item.name} 还有 ${item.totalCount} 名学生，请先把学生移到其他班级或停用后再删除。`);
       return;
     }
     modal.confirm({
@@ -301,7 +302,7 @@ export function TeacherClasses() {
       title: '学号',
       dataIndex: 'studentNo',
       width: 130,
-      render: (value: string) => <span className="font-mono text-[12.5px] text-[#4b5670]">{value || '—'}</span>,
+      render: (value: string) => <span className="font-mono [overflow-wrap:anywhere] text-[12.5px] text-ui-secondary">{value || '—'}</span>,
     },
     {
       title: '姓名',
@@ -312,14 +313,14 @@ export function TeacherClasses() {
           <Avatar
             size={28}
             style={{
-              background: row.isActive ? '#eef2ff' : '#f1f3f8',
-              color: row.isActive ? '#3358e8' : '#98a1b3',
+              background: row.isActive ? 'var(--ui-background-muted)' : 'var(--ui-background-muted)',
+              color: row.isActive ? 'var(--ui-action-primary)' : 'var(--ui-content-tertiary)',
               fontSize: 12,
             }}
           >
             {row.name.slice(0, 1)}
           </Avatar>
-          <span className={row.isActive ? 'text-[13px] font-medium text-[#26304a]' : 'text-[13px] font-medium text-[#98a1b3]'}>
+          <span className={row.isActive ? 'min-w-0 [overflow-wrap:anywhere] text-[13px] font-medium text-ui-primary' : 'min-w-0 [overflow-wrap:anywhere] text-[13px] font-medium text-ui-tertiary'}>
             {row.name}
           </span>
         </div>
@@ -341,7 +342,7 @@ export function TeacherClasses() {
       title: '作答记录',
       width: 100,
       render: (_, row) => (
-        <span className="tabular-nums text-[#5b6684]">{row.submissionCount > 0 ? `${row.submissionCount} 份` : '—'}</span>
+        <span className="tabular-nums text-ui-secondary">{row.submissionCount > 0 ? `${row.submissionCount} 份` : '—'}</span>
       ),
     },
     {
@@ -380,11 +381,11 @@ export function TeacherClasses() {
               },
             }}
           >
-            <Button
+            <IconButton
               size="small"
               type="text"
               icon={<MoreOutlined />}
-              aria-label={`${row.name} 更多操作`}
+              label={`${row.name} 更多操作`}
               onClick={(event) => event.stopPropagation()}
             />
           </Dropdown>
@@ -405,7 +406,7 @@ export function TeacherClasses() {
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="text-[14px] font-semibold text-[#1a2338]">{item.name}</div>
+        <div className="min-w-0 text-[14px] font-semibold text-ui-primary [overflow-wrap:anywhere]">{item.name}</div>
         <Dropdown
           trigger={['click']}
           menu={{
@@ -420,23 +421,23 @@ export function TeacherClasses() {
             },
           }}
         >
-          <Button
+          <IconButton
             type="text"
             size="small"
             icon={<MoreOutlined />}
-            aria-label={`${item.name} 操作`}
+            label={`${item.name} 操作`}
             onClick={(event) => event.stopPropagation()}
           />
         </Dropdown>
       </div>
-      <div className="mt-3 flex items-end justify-between">
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-1">
         <div>
-          <span className="text-[22px] font-semibold leading-none text-[#26304a]">{item.activeCount}</span>
-          <span className="ml-1 text-[11.5px] text-[#98a1b3]">名学生</span>
+          <span className="text-[22px] font-semibold leading-none text-ui-primary">{item.activeCount}</span>
+          <span className="ml-1 text-[11.5px] text-ui-tertiary">名学生</span>
         </div>
         {item.inactiveCount > 0 ? <Pill tone="red">停用 {item.inactiveCount}</Pill> : null}
       </div>
-      <div className="mt-2 text-[11px] text-[#98a1b3]">
+      <div className="mt-2 text-[11px] text-ui-tertiary">
         {item.totalCount === 0 ? '暂无学生' : `共 ${item.totalCount} 人 · 点击筛选`}
       </div>
     </div>
@@ -450,8 +451,8 @@ export function TeacherClasses() {
           title="班级管理"
           subtitle="导入班级与学生名册，管理学生登录权限；只有名册中的学生可以登录。"
         />
-        {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
-        <Skeleton active paragraph={{ rows: 10 }} />
+
+        {loadFailed ? <EmptyState title="班级名单暂不可用" action={<Button onClick={() => void load()}>重试</Button>} /> : <Skeleton paragraph={{ rows: 10 }} />}
       </Page>
     );
   }
@@ -480,7 +481,6 @@ export function TeacherClasses() {
         }
       />
 
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
       <div className="mb-5 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         <StatCard label="班级数" value={overview.classes.length} suffix="个" icon={<TeamOutlined />} tone="blue" hint="按班级组织学生名册" />
@@ -506,18 +506,18 @@ export function TeacherClasses() {
               className={`roster-class-card roster-class-all ${classFilter === 'all' ? 'is-active' : ''}`}
               onClick={() => setClassFilter('all')}
             >
-              <div className="text-[14px] font-semibold text-[#1a2338]">全部学生</div>
+              <div className="text-[14px] font-semibold text-ui-primary">全部学生</div>
               <div className="mt-3 flex items-end">
-                <span className="text-[22px] font-semibold leading-none text-[#26304a]">{overview.activeStudents}</span>
-                <span className="ml-1 text-[11.5px] text-[#98a1b3]">名可登录</span>
+                <span className="text-[22px] font-semibold leading-none text-ui-primary">{overview.activeStudents}</span>
+                <span className="ml-1 text-[11.5px] text-ui-tertiary">名可登录</span>
               </div>
-              <div className="mt-2 text-[11px] text-[#98a1b3]">共 {overview.totalStudents} 人</div>
+              <div className="mt-2 text-[11px] text-ui-tertiary">共 {overview.totalStudents} 人</div>
             </button>
             {overview.classes.map(classCard)}
             <button type="button" className="roster-class-card roster-class-add" onClick={openCreateClass}>
-              <PlusOutlined className="text-[18px] text-[#3358e8]" />
-              <div className="mt-2 text-[12.5px] font-medium text-[#3358e8]">新建班级</div>
-              <div className="mt-1 text-[11px] text-[#98a1b3]">创建后即可导入学生</div>
+              <PlusOutlined className="text-[18px] text-[var(--ui-action-primary)]" />
+              <div className="mt-2 text-[12.5px] font-medium text-[var(--ui-action-primary)]">新建班级</div>
+              <div className="mt-1 text-[11px] text-ui-tertiary">创建后即可导入学生</div>
             </button>
           </div>
         ) : (
@@ -553,8 +553,8 @@ export function TeacherClasses() {
         }
         styles={{ body: { padding: 0 } }}
       >
-        <div className="flex flex-wrap items-center gap-3 border-b border-[#eef1f8] px-4 py-3">
-          <Segmented
+        <div className="flex flex-wrap items-center gap-3 border-b border-ui-line px-4 py-3">
+          <Segmented className="max-w-full overflow-x-auto"
             value={statusFilter}
             onChange={(value) => setStatusFilter(value as 'all' | 'active' | 'inactive')}
             options={[
@@ -572,7 +572,7 @@ export function TeacherClasses() {
           <Select
             value={classFilter}
             onChange={setClassFilter}
-            style={{ width: 160 }}
+            style={{ width: 160, maxWidth: '100%' }}
             options={[
               { value: 'all', label: '全部班级' },
               ...overview.classes.map((item) => ({ value: item.id, label: item.name })),
@@ -580,11 +580,11 @@ export function TeacherClasses() {
           />
           <Input
             allowClear
-            prefix={<SearchOutlined className="text-[#98a1b3]" />}
+            prefix={<SearchOutlined className="text-ui-tertiary" />}
             placeholder="搜索姓名或学号"
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            style={{ width: 220 }}
+            style={{ width: 220, maxWidth: '100%' }}
           />
           {(keyword || classFilter !== 'all' || statusFilter !== 'all') ? (
             <Button
@@ -612,7 +612,7 @@ export function TeacherClasses() {
             locale={{ emptyText: <Empty description="当前筛选下没有学生" /> }}
             onRow={(record) => ({
               onClick: () => openEditStudent(record),
-              style: { cursor: 'pointer', opacity: record.isActive ? 1 : 0.72 },
+              style: { cursor: 'pointer' },
             })}
           />
         ) : (
@@ -646,7 +646,7 @@ export function TeacherClasses() {
         onCancel={() => setStudentModalOpen(false)}
         destroyOnHidden
       >
-        <div className="mb-4 text-[12.5px] leading-6 text-[#7b86a0]">
+        <div className="mb-4 text-[12.5px] leading-6 text-ui-secondary">
           姓名和学号是学生登录的凭证，学号在全校范围内唯一。
         </div>
         <Form form={studentForm} layout="vertical" requiredMark={false}>
@@ -710,13 +710,13 @@ export function TeacherClasses() {
         ]}
         destroyOnHidden
       >
-        <div className="mb-4 rounded-xl bg-[#f7f9fd] px-4 py-3 text-[12px] leading-6 text-[#7b86a0]">
+        <div className="mb-4 rounded-xl bg-ui-subtle px-4 py-3 text-[12px] leading-6 text-ui-secondary">
           支持 <strong>.xlsx / .xls / .csv</strong>。表头需包含
           <strong> 班级、姓名、学号 </strong>；也支持每个工作表就是一个班级，表头写姓名和学号即可。
           学号重复会自动更新姓名与班级，同一文件内学号不能重复。
         </div>
 
-        <Upload.Dragger {...uploadProps} style={{ background: '#fafbff' }}>
+        <Upload.Dragger {...uploadProps} style={{ background: 'var(--ui-surface-subtle)' }}>
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
@@ -742,9 +742,9 @@ export function TeacherClasses() {
             />
 
             {importResult.errors.length ? (
-              <div className="mt-3 max-h-[220px] overflow-auto rounded-xl border border-[#f4d2d2] bg-[#fffafa] p-3">
+              <div className="mt-3 max-h-[220px] overflow-auto rounded-xl border border-[var(--ui-status-danger-accent)] bg-[var(--ui-status-danger-bg)] p-3 [overflow-wrap:anywhere]">
                 {importResult.errors.map((item, index) => (
-                  <div key={index} className="text-[12px] leading-6 text-[#bf3737]">
+                  <div key={index} className="text-[12px] leading-6 text-[var(--ui-status-danger-text)]">
                     {item.sheet ? `${item.sheet} ` : ''}
                     {item.row > 0 ? `第 ${item.row} 行：` : ''}
                     {item.message}
@@ -754,9 +754,9 @@ export function TeacherClasses() {
             ) : null}
 
             {importResult.warnings.length ? (
-              <div className="mt-3 max-h-[160px] overflow-auto rounded-xl border border-[#f7e3c2] bg-[#fffaf2] p-3">
+              <div className="mt-3 max-h-[160px] overflow-auto rounded-xl border border-[var(--ui-status-warning-accent)] bg-[var(--ui-status-warning-bg)] p-3 [overflow-wrap:anywhere]">
                 {importResult.warnings.map((item, index) => (
-                  <div key={index} className="text-[12px] leading-6 text-[#a3680d]">
+                  <div key={index} className="text-[12px] leading-6 text-[var(--ui-status-warning-text)]">
                     {item.sheet ? `${item.sheet} ` : ''}
                     {item.row > 0 ? `第 ${item.row} 行：` : ''}
                     {item.message}

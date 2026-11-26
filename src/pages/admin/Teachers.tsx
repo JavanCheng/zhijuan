@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type Key } from 'react';
+import './teachers.css';
+import { useCallback, useEffect, useMemo, useRef, useState, type Key } from 'react';
 import {
-  Alert,
   App as AntApp,
   Avatar,
   Button,
@@ -37,7 +37,7 @@ import type {
   ManagedTeacher,
   TeacherOverview,
 } from '../../../shared/types';
-import { EmptyState, Page, PageHeader, Pill } from '../../ui';
+import { EmptyState, IconButton, Page, PageHeader, Pill } from '../../ui';
 import { formatDate } from '../../format';
 
 const { Text } = Typography;
@@ -53,7 +53,8 @@ interface TeacherForm {
 export function AdminTeachers() {
   const { message, modal } = AntApp.useApp();
   const [overview, setOverview] = useState<TeacherOverview | null>(null);
-  const [error, setError] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
+  const loadVersion = useRef(0);
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
@@ -64,17 +65,21 @@ export function AdminTeachers() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
+    setLoadFailed(false);
     try {
       const data = await api<TeacherOverview>('/api/admin/overview');
-      setOverview(data);
-      setError('');
+      if (version === loadVersion.current) setOverview(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      if (version !== loadVersion.current) return;
+      setLoadFailed(true);
+      void message.error(err instanceof Error ? err.message : '加载教师列表失败');
     }
-  }, []);
+  }, [message]);
 
   useEffect(() => {
     void load();
+    return () => { loadVersion.current += 1; };
   }, [load]);
 
   useEffect(() => {
@@ -133,30 +138,14 @@ export function AdminTeachers() {
         const payload: Record<string, unknown> = { name };
         if (phone) payload.phone = phone;
         await patch<ManagedTeacher>(`/api/admin/teachers/${editing.id}`, payload);
-        message.success('教师信息已更新');
-        if (phone && phone !== editing.phone) {
-          message.info('登录账号已更新为新手机号，密码同时重置为新手机号');
-        }
+        message.success(
+          phone && phone !== editing.phone
+            ? '教师信息已更新，登录账号和密码均已重置为新手机号'
+            : '教师信息已更新',
+        );
       } else {
-        const created = await post<ManagedTeacher>('/api/admin/teachers', { name, phone });
-        modal.success({
-          title: '教师账号已创建',
-          content: (
-            <div className="text-[12.5px] leading-7 text-[#5b6479]">
-              <div>
-                教师：<strong>{created.name}</strong>
-              </div>
-              <div>
-                登录账号：<strong className="font-mono">{created.phone}</strong>
-              </div>
-              <div>
-                初始密码：<strong className="font-mono">{created.phone}</strong>
-              </div>
-              <div className="mt-1 text-[11.5px] text-[#98a1b3]">请提醒教师首次登录后妥善保管账号信息。</div>
-            </div>
-          ),
-          okText: '知道了',
-        });
+        await post<ManagedTeacher>('/api/admin/teachers', { name, phone });
+        message.success('教师账号已创建，登录账号和初始密码均为手机号', 5);
       }
       setModalOpen(false);
       await load();
@@ -191,10 +180,8 @@ export function AdminTeachers() {
       cancelText: '取消',
       onOk: async () => {
         try {
-          const result = await post<{ ok: boolean; phone: string }>(
-            `/api/admin/teachers/${teacher.id}/reset-password`,
-          );
-          message.success(`密码已重置为 ${result.phone}`);
+          await post(`/api/admin/teachers/${teacher.id}/reset-password`);
+          message.success('密码已重置为该教师的手机号');
         } catch (err) {
           message.error(err instanceof Error ? err.message : '重置失败');
         }
@@ -340,11 +327,11 @@ export function AdminTeachers() {
       width: 190,
       render: (_, row) => (
         <div className="flex items-center gap-2.5">
-          <Avatar
+          <Avatar className="shrink-0"
             size={30}
             style={{
-              background: row.isActive ? '#f1ecff' : '#f1f3f8',
-              color: row.isActive ? '#5b3bc0' : '#98a1b3',
+              background: row.isActive ? 'var(--ui-background-muted)' : 'var(--ui-background-muted)',
+              color: row.isActive ? 'var(--ui-content-primary)' : 'var(--ui-content-tertiary)',
               fontSize: 12,
             }}
           >
@@ -354,14 +341,14 @@ export function AdminTeachers() {
             <div
               className={
                 row.isActive
-                  ? 'truncate text-[13px] font-medium text-[#26304a]'
-                  : 'truncate text-[13px] font-medium text-[#98a1b3]'
+                  ? '[overflow-wrap:anywhere] text-[13px] font-medium text-ui-primary'
+                  : '[overflow-wrap:anywhere] text-[13px] font-medium text-ui-tertiary'
               }
             >
               {row.name}
             </div>
             {row.username !== row.phone ? (
-              <div className="truncate text-[10.5px] text-[#a2aabc]">账号 {row.username}</div>
+              <div className="[overflow-wrap:anywhere] text-[10.5px] text-ui-tertiary">账号 {row.username}</div>
             ) : null}
           </div>
         </div>
@@ -373,7 +360,7 @@ export function AdminTeachers() {
       width: 150,
       render: (value: string | null) =>
         value ? (
-          <span className="font-mono text-[12.5px] text-[#4b5670]">{value}</span>
+          <span className="font-mono [overflow-wrap:anywhere] text-[12.5px] text-ui-secondary">{value}</span>
         ) : (
           <Pill tone="amber">待补全</Pill>
         ),
@@ -388,14 +375,14 @@ export function AdminTeachers() {
       title: '考试',
       width: 90,
       render: (_, row) => (
-        <span className="tabular-nums text-[#5b6684]">{row.examCount > 0 ? `${row.examCount} 场` : '—'}</span>
+        <span className="tabular-nums text-ui-secondary">{row.examCount > 0 ? `${row.examCount} 场` : '—'}</span>
       ),
     },
     {
       title: '学生答卷',
       width: 100,
       render: (_, row) => (
-        <span className="tabular-nums text-[#5b6684]">
+        <span className="tabular-nums text-ui-secondary">
           {row.submissionCount > 0 ? `${row.submissionCount} 份` : '—'}
         </span>
       ),
@@ -438,11 +425,11 @@ export function AdminTeachers() {
               },
             }}
           >
-            <Button
+            <IconButton
               size="small"
               type="text"
               icon={<MoreOutlined />}
-              aria-label={`${row.name} 更多操作`}
+              label={`${row.name} 更多操作`}
               onClick={(event) => event.stopPropagation()}
             />
           </Dropdown>
@@ -455,8 +442,12 @@ export function AdminTeachers() {
     return (
       <Page>
         <PageHeader title="教师账号" />
-        {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
-        <Skeleton active paragraph={{ rows: 10 }} />
+        {loadFailed ? (
+          <EmptyState
+            title="教师列表暂不可用"
+            action={<Button onClick={() => void load()}>重新加载</Button>}
+          />
+        ) : <Skeleton paragraph={{ rows: 10 }} />}
       </Page>
     );
   }
@@ -476,8 +467,6 @@ export function AdminTeachers() {
           </Button>
         }
       />
-
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
       <section className="admin-overview mb-5">
         <div className="admin-overview-main">
@@ -500,8 +489,8 @@ export function AdminTeachers() {
             size={150}
             strokeWidth={7}
             gapDegree={72}
-            strokeColor="#6d4ad8"
-            trailColor="#eef1f8"
+            strokeColor="var(--ui-action-primary)"
+            trailColor="var(--ui-background-muted)"
             format={(percent) => (
               <div className="admin-overview-ring-center">
                 <div className="admin-overview-ring-value">
@@ -558,8 +547,8 @@ export function AdminTeachers() {
         }
         styles={{ body: { padding: 16 } }}
       >
-        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-[#f8f9fd] px-3 py-2.5">
-          <Segmented
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-ui-subtle px-3 py-2.5">
+          <Segmented className="max-w-full overflow-x-auto"
             value={statusFilter}
             onChange={(value) => setStatusFilter(value as 'all' | 'active' | 'inactive')}
             options={[
@@ -570,11 +559,11 @@ export function AdminTeachers() {
           />
           <Input
             allowClear
-            prefix={<SearchOutlined className="text-[#98a1b3]" />}
+            prefix={<SearchOutlined className="text-ui-tertiary" />}
             placeholder="搜索姓名或手机号"
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            style={{ width: 230 }}
+            style={{ width: 230, maxWidth: '100%' }}
           />
           {keyword || statusFilter !== 'all' ? (
             <Button
@@ -591,7 +580,7 @@ export function AdminTeachers() {
         </div>
 
         {hasTeachers ? (
-          <div className="teacher-table overflow-hidden rounded-xl border border-[#eceff6]">
+          <div className="teacher-table overflow-hidden rounded-xl border border-ui-line">
             <Table
               rowKey="id"
               size="small"
@@ -611,12 +600,12 @@ export function AdminTeachers() {
               locale={{ emptyText: <Empty description="当前筛选下没有教师" /> }}
               onRow={(record) => ({
                 onDoubleClick: () => openEdit(record),
-                style: { cursor: 'default', opacity: record.isActive ? 1 : 0.72 },
+                style: { cursor: 'default' },
               })}
             />
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-[#dfe5f0] bg-[#fbfcff]">
+          <div className="rounded-xl border border-dashed border-ui-line bg-ui-subtle">
             <EmptyState
               icon={<UserSwitchOutlined />}
               title="还没有教师账号"
@@ -666,7 +655,7 @@ export function AdminTeachers() {
         <div className="batch-dock" role="region" aria-label="教师批量操作">
           <div className="flex items-center gap-2.5">
             <span className="batch-dock-count">{selectedRowKeys.length}</span>
-            <span className="text-[12.5px] font-medium text-[#4b5670]">已选择教师</span>
+            <span className="text-[12.5px] font-medium text-ui-secondary">已选择教师</span>
           </div>
           <div className="batch-dock-actions">
             <Button size="small" icon={<CheckCircleOutlined />} onClick={() => batch('enable')}>
@@ -679,11 +668,11 @@ export function AdminTeachers() {
               批量删除
             </Button>
           </div>
-          <Button
+          <IconButton
             type="text"
             size="small"
             icon={<CloseOutlined />}
-            aria-label="取消选择"
+            label="取消选择"
             onClick={() => setSelectedRowKeys([])}
           />
         </div>
