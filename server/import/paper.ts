@@ -359,7 +359,13 @@ export function parsePaperBlocks(blocks: Block[], docWarnings = 0): PaperParseRe
   const sectionHtml = (index: number): string => (sectionBlocks.get(index) ?? []).join('\n');
 
   for (const block of blocks) {
-    if (ignore || !block.lines.length) continue;
+    if (ignore) continue;
+    const images = block.html.match(/<img\b[^>]*>/gi) ?? [];
+    if (!block.lines.length) {
+      if (images.length && current) current.stemParts.push(block.html);
+      else if (images.length && section) sectionBlocks.set(section.index, [...(sectionBlocks.get(section.index) ?? []), block.html]);
+      continue;
+    }
     const first = block.lines[0].trim();
     if (!first) continue;
 
@@ -397,7 +403,7 @@ export function parsePaperBlocks(blocks: Block[], docWarnings = 0): PaperParseRe
       };
       sections.push(section);
       ordinalInSection = 0;
-      if (material) sectionBlocks.set(section.index, [`<p>${escapeHtml(material)}</p>`]);
+      if (material || images.length) sectionBlocks.set(section.index, [...(material ? [`<p>${escapeHtml(material)}</p>`] : []), ...images]);
       continue;
     }
 
@@ -424,6 +430,7 @@ export function parsePaperBlocks(blocks: Block[], docWarnings = 0): PaperParseRe
       const extra = block.lines.slice(1);
       if (rest) draft.stemParts.push(`<p>${escapeHtml(rest)}</p>`);
       for (const line of extra) draft.stemParts.push(`<p>${escapeHtml(line)}</p>`);
+      draft.stemParts.push(...images);
       continue;
     }
 
@@ -454,6 +461,7 @@ export function parsePaperBlocks(blocks: Block[], docWarnings = 0): PaperParseRe
       const everyLineIsOptions = block.lines.every((line) => optionsOf(line).length > 0);
       if (everyLineIsOptions) {
         for (const line of block.lines) current.options.push(...optionsOf(line));
+        current.stemParts.push(...images);
         continue;
       }
     }
@@ -661,7 +669,7 @@ function finalizeDraft(draft: Draft, sections: QuestionSection[], answers: Map<s
 
   let stemHtml = sanitize(draft.stemParts.join('\n'));
   if (type === 'fill') stemHtml = blankify(stemHtml);
-  if (!stripTags(stemHtml).trim() && type !== 'code') {
+  if (!stripTags(stemHtml).trim() && !/<img\b/i.test(stemHtml) && type !== 'code') {
     issues.push({ level: 'error', message: '题干为空' });
   }
 

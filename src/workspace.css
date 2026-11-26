@@ -174,3 +174,78 @@
 
 .sider-close.ant-btn { position: absolute; inset-block-start: 18px; inset-inline-end: 8px; }
 .app-frame.is-mobile .sider-brand { margin-inline-end: 48px; }
+
+/* Teacher pages size to the work area, not the full viewport (the sidebar may be expanded). */
+.teacher-workspace-content {
+  container: teacher-workspace / inline-size;
+  min-inline-size: 0;
+}
+
+.teacher-workspace-content .page-shell {
+  max-inline-size: var(--teacher-page-max, 1260px);
+  padding-inline: clamp(16px, 2.55cqi, 32px);
+}
+
+.teacher-workspace-content .teacher-layout-analytics { --teacher-page-max: 1440px; }
+.teacher-workspace-content .teacher-layout-grading { --teacher-page-max: 1360px; }
+.teacher-workspace-content .teacher-layout-classes { --teacher-page-max: 1260px; }
+.teacher-workspace-content .teacher-layout-review { --teacher-page-max: 1220px; }
+.teacher-workspace-content .ant-card,
+.teacher-workspace-content .ant-table-wrapper { min-inline-size: 0; }
+
+.teacher-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.teacher-chart-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.teacher-chart-pair > * { min-inline-size: 0; }
+
+.teacher-roster-class-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 184px), 1fr));
+  gap: 12px;
+}
+
+.teacher-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.teacher-review-questions, .teacher-review-sidebar { min-inline-size: 0; }
+.teacher-review-questions .stem { overflow-x: auto; overflow-wrap: anywhere; }
+.teacher-review-questions .answer-panel:not(.is-code) { overflow-wrap: anywhere; }
+.teacher-layout-analytics .filter-field { max-inline-size: 100%; }
+
+@container teacher-workspace (width >= 700px) {
+  .teacher-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .teacher-kpi-grid-five { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@container teacher-workspace (width >= 880px) {
+  .teacher-review-grid { grid-template-columns: minmax(0, 1fr) clamp(248px, 26cqi, 318px); }
+  .teacher-review-sidebar { position: sticky; inset-block-start: 80px; }
+  .teacher-review-summary { max-block-size: calc(100dvh - 96px); overflow: auto; }
+}
+
+@container teacher-workspace (width >= 1000px) {
+  .teacher-kpi-grid-five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .teacher-chart-pair { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .teacher-chart-wide { grid-column: span 7; }
+  .teacher-chart-narrow { grid-column: span 5; }
+  .teacher-chart-half { grid-column: span 6; }
+}
+
+@container teacher-workspace (width < 440px) {
+  .teacher-kpi-grid { gap: 10px; }
+  .teacher-layout-analytics .filter-field { min-inline-size: 0 !important; flex-basis: 100% !important; }
+  .teacher-review-summary .ant-card-body { padding-inline: 16px; }
+}

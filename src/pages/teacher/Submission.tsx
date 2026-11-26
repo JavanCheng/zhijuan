@@ -4,12 +4,10 @@ import {
   App as AntApp,
   Button,
   Card,
-  Col,
   Divider,
   Input,
   InputNumber,
   Progress,
-  Row,
   Space,
   Spin,
   Statistic,
@@ -127,7 +125,7 @@ export function TeacherSubmission() {
 
   if (!data) {
     return (
-      <Page>
+      <Page className="teacher-layout-review">
         {loadFailed ? <EmptyState title="答卷详情暂不可用" action={<Button onClick={() => void load()}>重试</Button>} /> : <Spin />}
       </Page>
     );
@@ -144,7 +142,7 @@ export function TeacherSubmission() {
   }
 
   return (
-    <Page>
+    <Page className="teacher-layout-review">
       <PageHeader
         back={
           <Button
@@ -183,8 +181,8 @@ export function TeacherSubmission() {
       />
 
 
-      <Row gutter={[20, 20]}>
-        <Col xs={24} xl={17}>
+      <div className="teacher-review-grid">
+        <div className="teacher-review-questions">
           {data.questions.map((q, qIndex) => {
             const answer = answerOf(q.id);
             const draft = drafts[q.id];
@@ -343,10 +341,10 @@ export function TeacherSubmission() {
               </Fragment>
             );
           })}
-        </Col>
+        </div>
 
-        <Col xs={24} xl={7}>
-          <Card className="xl:sticky xl:top-[82px]">
+        <div className="teacher-review-sidebar">
+          <Card className="teacher-review-summary">
             <div className="flex items-center justify-between">
               <div className="text-[14px] font-semibold text-ui-primary">本卷得分</div>
               <Pill tone="gray">
@@ -437,8 +435,8 @@ export function TeacherSubmission() {
               完成，返回列表
             </Button>
           </Card>
-        </Col>
-      </Row>
+        </div>
+      </div>
     </Page>
   );
 }

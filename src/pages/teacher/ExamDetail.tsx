@@ -20,7 +20,7 @@ import {
 import type { TableProps, UploadProps } from 'antd';
 import {
   ArrowLeftOutlined,
-  BarChartOutlined,
+
   DeleteOutlined,
   DownloadOutlined,
   InboxOutlined,
@@ -28,6 +28,9 @@ import {
 import { api, del, patch, post, put } from '../../api';
 import type { ExamDetailTeacher, ImportResult, QuestionTeacher } from '../../../shared/types';
 import { EmptyState, ExamStatusTag, IconButton, Page, PageHeader, Pill, SectionMaterial, SectionTag, TypeTag } from '../../ui';
+import { TeacherPaperPreview } from './TeacherPaperPreview';
+import { QuestionEditor } from './QuestionEditor';
+import './paper-workspace.css';
 import { formatAnswerSpec, scoreText, stripHtml } from '../../format';
 
 const { Text } = Typography;
@@ -67,9 +70,10 @@ export function TeacherExam() {
   const [classIds, setClassIds] = useState<number[]>([]);
   const [classes, setClasses] = useState<Array<{ id: number; name: string; activeCount: number }> | null>(null);
   const [publishError, setPublishError] = useState('');
-  const [closeOpen, setCloseOpen] = useState(false);
+
   const [studentPreview, setStudentPreview] = useState(false);
-  const [closeAction, setCloseAction] = useState<'collect' | 'discard'>('collect');
+  const [editingQuestion, setEditingQuestion] = useState<QuestionTeacher | null>(null);
+
   const [runtimeAvailable, setRuntimeAvailable] = useState<boolean | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -182,25 +186,6 @@ export function TeacherExam() {
     }
   }
 
-  function closeExam() {
-    setCloseAction('collect');
-    setCloseOpen(true);
-  }
-
-  async function confirmClose() {
-    setBusy(true);
-    try {
-      const result = await post<{ collected: number; discarded: number }>(`/api/teacher/exams/${examId}/close`, { action: closeAction });
-      setCloseOpen(false);
-      void message.success(`考试已结束 · 已收卷 ${result.collected} 份 · 未收卷 ${result.discarded} 份`);
-      await load();
-    } catch (err) {
-      void message.error(err instanceof Error ? err.message : '结束考试失败');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function removeExam() {
     modal.confirm({
       title: '删除考试',
@@ -255,6 +240,10 @@ export function TeacherExam() {
     );
   }
 
+  if (exam.status !== 'draft') {
+    return <Page><TeacherPaperPreview exam={exam} onBack={() => navigate(returnTo)} /></Page>;
+  }
+
   const hasQuestions = exam.questions.length > 0;
   const locked = exam.submissionCount > 0;
   const errorCount = importResult?.counts.errors ?? 0;
@@ -270,8 +259,6 @@ export function TeacherExam() {
 
   let stepCurrent = 0;
   if (hasQuestions) stepCurrent = 1;
-  if (exam.status !== 'draft') stepCurrent = 2;
-  if (exam.resultsPublished) stepCurrent = 4;
 
   const columns: TableProps<QuestionTeacher>['columns'] = [
     { title: '题号', dataIndex: 'seq', width: 64 },
@@ -288,7 +275,7 @@ export function TeacherExam() {
       title: '题干',
       dataIndex: 'stemHtml',
       render: (_, q) => (
-        <div className="max-w-[520px] [overflow-wrap:anywhere] text-[13.5px] leading-6 text-ui-primary">{stripHtml(q.stemHtml).slice(0, 90)}</div>
+        <div className="paper-stem-summary">{stripHtml(q.stemHtml).slice(0, 130)}{q.stemHtml.includes('<img') ? <Pill tone="blue">含图片</Pill> : null}</div>
       ),
     },
     {
@@ -310,10 +297,10 @@ export function TeacherExam() {
       render: (_, q) => <ScoreCell question={q} onSave={(value) => updateScore(q, value)} />,
     },
     {
-      title: '',
-      width: 56,
+      title: '操作',
+      width: 118,
       render: (_, q) => (
-        <IconButton
+        <Space size={3}><Button size="small" type="link" disabled={locked} onClick={() => setEditingQuestion(q)}>编辑题目</Button><IconButton
           type="text"
           label={`删除第 ${q.seq} 题`}
           danger
@@ -321,13 +308,13 @@ export function TeacherExam() {
           disabled={locked}
           icon={<DeleteOutlined />}
           onClick={() => removeQuestion(q)}
-        />
+        /></Space>
       ),
     },
   ];
 
   return (
-    <Page>
+    <Page className="teacher-paper-workspace">
       <PageHeader
         back={
           <Button type="link" icon={<ArrowLeftOutlined />} className="!px-0" onClick={() => navigate(returnTo)}>
@@ -346,27 +333,11 @@ export function TeacherExam() {
           </Space>
         }
         extra={
-          exam.status === 'draft' ? (
-            <>
-              <Button disabled={!hasQuestions} onClick={() => setStudentPreview(true)}>学生视角预览</Button>
-              <Button danger onClick={removeExam}>
-                删除
-              </Button>
-              <Button type="primary" loading={busy} disabled={!hasQuestions} onClick={() => void openPublish()}>
-                发布考试
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button icon={<BarChartOutlined />} onClick={() => navigate(`/teacher/analytics?examId=${exam.id}`)}>
-                学情看板
-              </Button>
-              {exam.status === 'published' ? <Button onClick={closeExam}>结束考试</Button> : null}
-              <Button type="primary" onClick={() => navigate(`/teacher/exam/${exam.id}/grading`)}>
-                批改与出分
-              </Button>
-            </>
-          )
+          <>
+            <Button disabled={!hasQuestions} onClick={() => setStudentPreview(true)}>学生视角预览</Button>
+            <Button danger onClick={removeExam}>删除草稿</Button>
+            <Button type="primary" loading={busy} disabled={!hasQuestions} onClick={() => void openPublish()}>发布考试</Button>
+          </>
         }
       />
 
@@ -513,9 +484,7 @@ export function TeacherExam() {
                         {q.needsManual ? <Pill tone="amber">需人工评分</Pill> : null}
                         {q.type === 'code' ? <Pill>{q.testCases.length} 个测试点</Pill> : null}
                       </Space>
-                      <div className="whitespace-pre-wrap [overflow-wrap:anywhere] text-[13.5px] leading-7 text-ui-primary">
-                        {stripHtml(q.stemHtml).slice(0, 220)}
-                      </div>
+                      <div className="prose-question paper-import-stem" dangerouslySetInnerHTML={{ __html: q.stemHtml }} />
                       <div className="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] text-[12px] text-ui-secondary">
                         {q.type === 'code'
                           ? `语言：${q.codeSpec?.languages.join(', ') ?? 'python'}`
@@ -538,20 +507,10 @@ export function TeacherExam() {
           </>
         ) : null}
       </Modal>
-      <Modal open={studentPreview} title="学生视角预览" width={820} footer={null} onCancel={() => setStudentPreview(false)}
-        styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}>
-        <div className="grid gap-4">
-          {exam.questions.map((question, index) => {
-            const section = exam.sections.find((item) => item.index === question.sectionIndex);
-            const firstInSection = index === 0 || exam.questions[index - 1]?.sectionIndex !== question.sectionIndex;
-            return <article key={question.id} className="rounded-lg border border-ui-line p-4">
-              {section && firstInSection ? <SectionMaterial section={section} /> : null}
-              <div className="mb-2 font-medium">第 {question.seq} 题 · {scoreText(question.score)} 分 <TypeTag type={question.type} /></div>
-              <div className="question-html" dangerouslySetInnerHTML={{ __html: question.stemHtml }} />
-              {question.options.length ? <ul className="mt-2 list-none pl-0">{question.options.map((option) => <li key={option.key}>{option.key}. {option.text}</li>)}</ul> : null}
-            </article>;
-          })}
-        </div>
+      {editingQuestion ? <QuestionEditor key={editingQuestion.id} question={editingQuestion} onCancel={() => setEditingQuestion(null)} onSaved={() => { setEditingQuestion(null); void message.success('题目已保存'); void load(); }} /> : null}
+      <Modal open={studentPreview} title="学生视角预览" width={1080} footer={null} onCancel={() => setStudentPreview(false)}
+        styles={{ body: { maxHeight: '72vh', overflowY: 'auto' } }}>
+        <TeacherPaperPreview exam={exam} draft />
       </Modal>
       <Modal open={publishOpen} title="检查并发布考试" okText="发布考试" confirmLoading={busy} onOk={() => void publish()}
         onCancel={() => setPublishOpen(false)} okButtonProps={{ disabled: !classes || (audience === 'classes' && classIds.length === 0) }}>
@@ -571,16 +530,6 @@ export function TeacherExam() {
             <Alert type="warning" showIcon title="全校启用学生均可参加考试" />
           )}
           {publishError ? <Alert type="error" showIcon title={publishError} /> : null}
-        </div>
-      </Modal>
-      <Modal open={closeOpen} title="结束考试" okText="确认结束" confirmLoading={busy} onOk={() => void confirmClose()}
-        onCancel={() => setCloseOpen(false)}>
-        <div className="grid gap-3">
-          <p>当前显示有 {exam.progress.inProgress} 位学生答题中。结束后不能继续作答。</p>
-          <Radio.Group value={closeAction} onChange={(event) => setCloseAction(event.target.value)} options={[
-            { value: 'collect', label: '按已保存答案收卷，并进入评分' },
-            { value: 'discard', label: '不收未交草稿，不计入成绩' },
-          ]} />
         </div>
       </Modal>
     </Page>

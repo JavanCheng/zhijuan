@@ -92,6 +92,7 @@ export function TeacherHome() {
   }
 
   async function createExam() {
+    if (pending) return;
     let values: CreateForm;
     try { values = await form.validateFields(); } catch { return; }
     setPending(true);
@@ -181,7 +182,7 @@ export function TeacherHome() {
                     </div> : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {action.to !== detail ? <Button size="small" onClick={() => navigate(detail, { state: { returnTo } })}>试卷详情</Button> : null}
+                    {action.to !== detail ? <Button size="small" onClick={() => navigate(detail, { state: { returnTo } })}>试卷预览</Button> : null}
                     {exam.status === 'draft' ? <Button size="small" type="text" danger onClick={() => removeExam(exam)}>删除</Button> : null}
                     <Button size="small" type="primary" onClick={() => navigate(action.to, { state: { returnTo } })}>{action.label}</Button>
                   </div>
@@ -191,17 +192,18 @@ export function TeacherHome() {
           })}
         </div>
       )}
-      <Modal open={creating} title="新建考试" okText="创建并继续" cancelText="取消"
+      <Modal open={creating} width={610} title="新建考试" okText="保存草稿并导入试卷" cancelText="取消"
         confirmLoading={pending} onOk={createExam} onCancel={() => { if (!pending) setCreating(false); }}
         mask={{ closable: !pending }} keyboard={!pending} destroyOnHidden>
         <Form form={form} layout="vertical" initialValues={{ durationMin: 60 }} requiredMark={false} disabled={pending}>
+          <Alert className="mb-5" type="info" title="先填写考试信息，再导入或校对试卷" description="保存后进入草稿。只有在检查试卷并选好应考班级后，学生才会看到考试。" showIcon />
           <Form.Item label="考试名称" name="title" rules={[{ required: true, whitespace: true, message: '请填写考试名称' }, { max: 120, message: '最多 120 字' }]}>
             <Input placeholder="例如：高一信息科技 · 第一章单元测" autoFocus />
           </Form.Item>
           <Form.Item label="说明（可选）" name="description">
             <Input.TextArea rows={3} placeholder="考试范围、注意事项等，学生工作台可见" maxLength={2000} />
           </Form.Item>
-          <Form.Item label="考试时长（分钟）" name="durationMin" rules={[{ required: true, message: '请填写考试时长' }]}>
+          <Form.Item label="考试时长（分钟）" name="durationMin" extra="每位学生开始作答后单独计时。" rules={[{ required: true, message: '请填写考试时长' }, { type: 'integer', min: 1, max: 600, message: '请输入 1–600 分钟之间的整数' }]}>
             <InputNumber min={1} max={600} style={{ width: '100%' }} />
           </Form.Item>
         </Form>

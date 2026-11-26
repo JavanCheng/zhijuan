@@ -140,7 +140,7 @@ function WorkspaceShell({ admin = false }: { admin?: boolean }) {
   }
 
   return (
-    <div className={`app-frame${mobile ? ' is-mobile' : ''}`} onKeyDown={(event) => {
+    <div className={`app-frame workspace-${role}${mobile ? ' is-mobile' : ''}`} onKeyDown={(event) => {
       if (overlayOpen && event.key === 'Escape') {
         event.stopPropagation();
         closeOverlay();
@@ -202,7 +202,7 @@ function WorkspaceShell({ admin = false }: { admin?: boolean }) {
             <UserMenu name={admin ? 'Admin' : user?.name} subtitle={admin ? '管理员' : '教师'} onLogout={signOut} onChangePassword={admin ? undefined : () => setPasswordOpen(true)} />
           </div>
         </Layout.Header>
-        <Layout.Content><Outlet /></Layout.Content>
+        <Layout.Content className={admin ? undefined : 'teacher-workspace-content'}><Outlet /></Layout.Content>
         {passwordOpen && !admin ? <ChangePasswordDialog onClose={() => setPasswordOpen(false)} /> : null}
       </Layout>
     </div>

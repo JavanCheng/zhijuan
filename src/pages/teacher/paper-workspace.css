@@ -1,0 +1,11 @@
+.teacher-paper-workspace { max-width: 1380px; }
+.teacher-paper-workspace .ant-card-body { min-width: 0; }
+.paper-stem-summary { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 5px 8px; overflow-wrap: anywhere; line-height: 1.6; }
+.paper-import-stem { margin-block: 10px; color: var(--ui-content-primary); }
+.paper-import-stem img, .paper-edit-html img { display: block; max-width: 100%; height: auto; margin-block: 12px; border-radius: 6px; }
+.paper-edit-fields { display: grid; gap: 16px; padding: 8px 4px 4px 0; }
+.paper-edit-field { display: grid; gap: 8px; min-width: 0; }
+.paper-edit-label { color: var(--ui-content-primary); font-weight: 600; }
+.paper-edit-html { min-height: 82px; width: 100%; overflow-x: auto; padding: 10px 13px; border: 1px solid var(--ui-border-default); border-radius: var(--ui-radius-md); background: var(--ui-surface-subtle); }
+.paper-edit-html:focus-visible { outline: 2px solid var(--ui-action-primary); outline-offset: 1px; }
+.paper-edit-option { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px; align-items: center; }

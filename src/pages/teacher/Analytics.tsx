@@ -851,7 +851,7 @@ export function TeacherAnalytics() {
 
   if (!meta) {
     return (
-      <Page>
+      <Page className="teacher-layout-analytics">
         <PageHeader eyebrow="Analytics" title="学情看板" subtitle="按班级与学生维度汇总成绩、定位薄弱题目。" />
         {metaFailed ? (
           <EmptyState title="学情看板暂不可用" action={<Button onClick={() => setRefreshKey((key) => key + 1)}>重试</Button>} />
@@ -867,7 +867,7 @@ export function TeacherAnalytics() {
 
   if (!meta.exams.length) {
     return (
-      <Page>
+      <Page className="teacher-layout-analytics">
         <PageHeader
           eyebrow="Analytics"
           title="学情看板"
@@ -892,7 +892,7 @@ export function TeacherAnalytics() {
   const totalAllStudents = meta.students.length;
 
   return (
-    <Page>
+    <Page className="teacher-layout-analytics">
       <PageHeader
         eyebrow="Analytics"
         title="学情看板"
@@ -981,7 +981,7 @@ export function TeacherAnalytics() {
         </div>
       ) : (
         <div className="content-reveal min-w-0" aria-busy={loading}>
-          <div className="mb-4 grid grid-cols-2 gap-3.5 lg:grid-cols-5">
+          <div className="teacher-kpi-grid teacher-kpi-grid-five mb-4">
             <StatCard
               label="参评人数"
               value={data.kpi.participants}
@@ -1049,8 +1049,8 @@ export function TeacherAnalytics() {
                 label: '总览',
                 children: (
                   <div className="grid gap-4">
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-                      <div className="min-w-0 xl:col-span-7">
+                    <div className="teacher-chart-pair">
+                      <div className="teacher-chart-wide">
                         <Panel
                           title="成绩分布"
                           desc={`按卷面得分率分段统计 · 共 ${data.kpi.participants} 人`}
@@ -1059,7 +1059,7 @@ export function TeacherAnalytics() {
                           <Chart option={distributionOption} height={290} ariaLabel="成绩分布柱状图" />
                         </Panel>
                       </div>
-                      <div className="min-w-0 xl:col-span-5">
+                      <div className="teacher-chart-narrow">
                         <Panel
                           title="历次考试趋势"
                           desc="最近 8 场已评考试的平均得分率变化。"
@@ -1074,13 +1074,13 @@ export function TeacherAnalytics() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-                      <div className="min-w-0 xl:col-span-6">
+                    <div className="teacher-chart-pair">
+                      <div className="teacher-chart-half">
                         <Panel title="班级平均分对比" desc="柱状为平均分，虚线为班级最高 / 最低分。">
                           <Chart option={classScoreOption} height={300} ariaLabel="班级平均分对比图" />
                         </Panel>
                       </div>
-                      <div className="min-w-0 xl:col-span-6">
+                      <div className="teacher-chart-half">
                         <Panel title="逐题得分率" desc="横向定位本次考试的薄弱题目，优先讲评低得分率题目。">
                           <Chart option={questionRateOption} height={300} ariaLabel="逐题得分率条形图" />
                         </Panel>
@@ -1094,13 +1094,13 @@ export function TeacherAnalytics() {
                 label: '班级对比',
                 children: (
                   <div className="grid gap-4">
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-                      <div className="min-w-0 xl:col-span-7">
+                    <div className="teacher-chart-pair">
+                      <div className="teacher-chart-wide">
                         <Panel title="班级成绩对比" desc="平均分、最高分与最低分同图展示，快速识别班级差距。">
                           <Chart option={classScoreOption} height={320} ariaLabel="班级成绩对比图" />
                         </Panel>
                       </div>
-                      <div className="min-w-0 xl:col-span-5">
+                      <div className="teacher-chart-narrow">
                         <Panel title="及格率与优秀率" desc="按卷面 60% / 85% 计算。">
                           <Chart option={classRateOption} height={320} ariaLabel="班级及格率与优秀率对比图" />
                         </Panel>
@@ -1184,13 +1184,13 @@ export function TeacherAnalytics() {
                 label: '逐题分析',
                 children: (
                   <div className="grid gap-4">
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-                      <div className="min-w-0 xl:col-span-7">
+                    <div className="teacher-chart-pair">
+                      <div className="teacher-chart-wide">
                         <Panel title="题目得分率" desc="颜色越偏红表示得分率越低，优先安排讲评。">
                           <Chart option={questionRateOption} height={340} ariaLabel="逐题得分率条形图" />
                         </Panel>
                       </div>
-                      <div className="min-w-0 xl:col-span-5">
+                      <div className="teacher-chart-narrow">
                         <Panel title="题型得分率" desc="按题型汇总的得分率雷达图，观察能力结构。">
                           <Chart option={typeRadarOption} height={340} ariaLabel="题型得分率雷达图" />
                         </Panel>

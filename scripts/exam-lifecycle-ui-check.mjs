@@ -46,12 +46,22 @@ try {
   await req('POST', '/auth/teacher/login', { username: teacher.phone, password: teacher.password });
   const exam = await req('POST', '/teacher/exams', { title: '班级发布浏览器回归' });
   const source = await req('POST', `/teacher/exams/${exam.id}/import`, { sample: true });
+  const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPrcAAAAASUVORK5CYII=';
+  source.questions[0].stemHtml += `<p><img alt="回归题图" src="${pixel}"></p>`;
   await req('PUT', `/teacher/exams/${exam.id}/questions`, { questions: source.questions, sections: source.sections });
   const overview = await req('GET', '/teacher/classes/overview');
   const active = overview.classes.filter((item) => item.activeCount > 0);
   assert.ok(active.length >= 2, '需要至少两个已启用班级');
   const selected = active[0];
   await page.goto(`${base}/teacher/exam/${exam.id}`);
+  await page.getByRole('button', { name: '编辑题目' }).first().click();
+  const editor = page.getByRole('dialog');
+  const stem = editor.getByRole('textbox', { name: '题干', exact: true });
+  await stem.getByRole('img', { name: '回归题图' }).waitFor();
+  await stem.press('Home');
+  await page.keyboard.insertText('已校对：');
+  await editor.getByRole('button', { name: '保存题目' }).click();
+  await page.getByText(/已校对：/).first().waitFor();
   await page.getByRole('button', { name: '发布考试', exact: true }).click();
   const dialog = page.getByRole('dialog');
   const publish = dialog.getByRole('button', { name: '发布考试', exact: true });
@@ -68,8 +78,36 @@ try {
   const detail = await req('GET', `/teacher/exams/${exam.id}`);
   assert.deepEqual(detail.audience, { type: 'classes', classIds: [selected.id], studentCount: selected.activeCount });
   assert.equal(detail.progress.expected, selected.activeCount);
+  const paper = page.locator('.teacher-paper-preview');
+  await paper.getByText('教师核对版', { exact: true }).waitFor();
+  await paper.getByRole('img', { name: '回归题图' }).waitFor();
+  await paper.getByText('参考答案', { exact: true }).first().waitFor();
+  assert.equal(await page.getByRole('button', { name: /编辑题目|发布考试|结束考试|提交试卷/ }).count(), 0);
+  const locked = await page.request.patch(`${base}/api/teacher/questions/${detail.questions[0].id}`, { data: { score: 20 } });
+  assert.equal(locked.status(), 409);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  assert.ok(await paper.evaluate((node) => node.getBoundingClientRect().width < 1450));
+  assert.ok(await paper.evaluate((node) => node.querySelector('img')?.naturalWidth > 0));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth).catch(async (error) => {
+    console.log(await page.evaluate(() => [...document.querySelectorAll('body *')].filter((el) => el.getBoundingClientRect().right > innerWidth + 1).slice(0, 20).map((el) => [el.tagName, String(el.className), el.getBoundingClientRect().right])));
+    throw error;
+  });
+  for (const [route, scope] of [
+    ['/teacher/classes', '.teacher-layout-classes'],
+    [`/teacher/analytics?examId=${exam.id}`, '.teacher-layout-analytics'],
+    [`/teacher/exam/${exam.id}/grading`, '.teacher-layout-grading'],
+  ]) {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto(`${base}${route}`);
+    const content = page.locator(scope).first();
+    await content.waitFor();
+    assert.ok(await content.evaluate((node) => node.getBoundingClientRect().width <= 1440), route);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
+  }
   assert.deepEqual(errors, []);
-  console.log('班级发布浏览器回归通过：未选班级不可发布、实际选择班级、正确请求和应考人数。');
+  console.log('教师浏览器回归通过：题图、草稿编辑、班级发布、只读预览和宽窄屏。');
 } finally {
   await browser?.close();
   if (server.exitCode === null) server.kill();

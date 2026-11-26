@@ -5,7 +5,7 @@ import sanitizeHtml from 'sanitize-html';
 export const STEM_TAGS = [
   'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'sub', 'sup', 'span', 'code', 'pre',
   'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img', 'h1', 'h2', 'h3', 'h4',
-  'blockquote',
+  'blockquote', 'div',
 ];
 
 export function sanitize(html: string): string {
@@ -20,8 +20,10 @@ export function sanitize(html: string): string {
     allowedStyles: {
       '*': { 'text-align': [/^(left|center|right)$/], 'font-weight': [/^(bold|normal|[0-9]{3})$/] },
     },
-    allowedSchemes: ['data', 'http', 'https'],
-    allowedSchemesByTag: { img: ['data', 'http', 'https'] },
+    allowedSchemes: ['data'],
+    allowProtocolRelative: false,
+    allowedSchemesByTag: { img: ['data'] },
+    exclusiveFilter: (frame) => frame.tag === 'img' && !/^data:image\/(?:png|jpeg|gif|webp|bmp);base64,[a-z0-9+/]+=*$/i.test(frame.attribs.src ?? ''),
     transformTags: {
       b: 'strong',
       i: 'em',

@@ -473,7 +473,7 @@ export function TeacherClasses() {
 
   if (!overview) {
     return (
-      <Page>
+      <Page className="teacher-layout-classes">
         <PageHeader
           eyebrow="Roster"
           title="班级管理"
@@ -489,7 +489,7 @@ export function TeacherClasses() {
   const hasStudents = overview.students.length > 0;
 
   return (
-    <Page>
+    <Page className="teacher-layout-classes">
       <PageHeader
         eyebrow="Roster"
         title="班级管理"
@@ -510,7 +510,7 @@ export function TeacherClasses() {
       />
 
 
-      <div className="mb-5 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+      <div className="teacher-kpi-grid mb-5">
         <StatCard label="班级数" value={overview.classes.length} suffix="个" icon={<TeamOutlined />} tone="blue" hint="按班级组织学生名册" />
         <StatCard label="学生总数" value={overview.totalStudents} suffix="人" icon={<UserAddOutlined />} tone="purple" hint={`未分班 ${overview.unassignedStudents} 人`} />
         <StatCard label="可登录学生" value={overview.activeStudents} suffix="人" icon={<CheckCircleOutlined />} tone="green" hint="姓名 + 学号可登录" />
@@ -528,7 +528,7 @@ export function TeacherClasses() {
         styles={{ body: { padding: 16 } }}
       >
         {hasClasses ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="teacher-roster-class-grid">
             <button
               type="button"
               className={`roster-class-card roster-class-all ${classFilter === 'all' ? 'is-active' : ''}`}
@@ -636,7 +636,7 @@ export function TeacherClasses() {
             columns={classColumns}
             dataSource={filteredStudents}
             pagination={{ pageSize: 12, showSizeChanger: false, showTotal: (total) => `共 ${total} 名学生` }}
-            scroll={{ x: 980 }}
+            scroll={{ x: 840 }}
             locale={{ emptyText: <Empty description="当前筛选下没有学生" /> }}
             onRow={(record) => ({
               onClick: () => openEditStudent(record),

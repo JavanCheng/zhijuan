@@ -181,6 +181,30 @@ export function TeacherGrading() {
     });
   }
 
+  function endExam() {
+    if (!exam) return;
+    const dialog = modal.confirm({
+      title: '结束考试并收卷',
+      content: `当前 ${exam.progress.inProgress} 人答题中。默认按最后保存的答案收卷并评分；如需排除未交草稿，请选下方选项。`,
+      footer: (_, { OkBtn, CancelBtn }) => <><Button danger disabled={busy} onClick={() => {
+        modal.confirm({ title: '不收未交草稿', content: '未交卷的草稿不会计入成绩。确定结束吗？', okText: '结束且不收草稿', okButtonProps: { danger: true }, onOk: async () => { await finishExam('discard'); dialog.destroy(); } });
+      }}>不收未交草稿</Button><CancelBtn /><OkBtn /></>,
+      okText: '收卷并结束', cancelText: '取消', onOk: () => finishExam('collect'),
+    });
+  }
+
+  async function finishExam(action: 'collect' | 'discard') {
+    setBusy(true);
+    try {
+      const result = await post<{ collected: number; discarded: number }>(`/api/teacher/exams/${examId}/close`, { action });
+      void message.success(`考试已结束 · 收卷 ${result.collected} 份 · 未收卷 ${result.discarded} 份`);
+      await load();
+    } catch (err) {
+      void message.error(err instanceof Error ? err.message : '结束考试失败');
+      throw err;
+    } finally { setBusy(false); }
+  }
+
   function toggleResults() {
     if (!exam) return;
     const next = !exam.resultsPublished;
@@ -211,7 +235,7 @@ export function TeacherGrading() {
 
   if (!exam || rows === null) {
     return (
-      <Page>
+      <Page className="teacher-layout-grading">
         {loadFailed ? <EmptyState title="批改列表暂不可用" action={<Button onClick={() => void load()}>重试</Button>} /> : <Spin />}
       </Page>
     );
@@ -312,7 +336,7 @@ export function TeacherGrading() {
   ];
 
   return (
-    <Page>
+    <Page className="teacher-layout-grading">
       <PageHeader
         back={
           <Button type="link" icon={<ArrowLeftOutlined />} className="!px-0" onClick={() => navigate('/teacher')}>
@@ -332,7 +356,8 @@ export function TeacherGrading() {
             <Button icon={<BarChartOutlined />} onClick={() => navigate(`/teacher/analytics?examId=${exam.id}`)}>
               学情看板
             </Button>
-            <Button onClick={() => navigate(`/teacher/exam/${exam.id}`)}>试卷详情</Button>
+            <Button onClick={() => navigate(`/teacher/exam/${exam.id}`)}>试卷预览</Button>
+            {exam.status === 'published' ? <Button loading={busy} onClick={endExam}>结束考试</Button> : null}
             <Button loading={busy} onClick={confirmAuto}>
               确认全部自动分
             </Button>
@@ -349,7 +374,7 @@ export function TeacherGrading() {
       />
 
 
-      <div className="mb-5 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+      <div className="teacher-kpi-grid mb-5">
         <StatCard
           label="已提交"
           value={stats.submitted}

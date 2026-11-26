@@ -189,7 +189,7 @@ function finalize(d: Draft, index: number): ParsedQuestion {
   }
 
   const stemHtml = sanitize(d.stemParts.join('\n'));
-  if (!stripTags(stemHtml).trim() && d.type !== 'code') {
+  if (!stripTags(stemHtml).trim() && !/<img\b/i.test(stemHtml) && d.type !== 'code') {
     issues.push({ level: 'error', message: '题干为空' });
   }
 
@@ -304,7 +304,8 @@ export function parseLegacyBlocks(blocks: Block[], warningCount = 0): ImportResu
 
   for (const block of blocks) {
     const lines = block.lines;
-    if (!lines.length) continue;
+    const images = block.html.match(/<img\b[^>]*>/gi) ?? [];
+    if (!lines.length) { if (images.length) appendStemHtml(block.html); continue; }
 
     const header = matchHeader(lines[0]);
     if (header) {
@@ -318,6 +319,7 @@ export function parseLegacyBlocks(blocks: Block[], warningCount = 0): ImportResu
         rest = scored.text;
         if (rest) appendStemText(rest);
       }
+      for (const image of images) appendStemHtml(image);
       // 首行若还带选项（少见），尝试拆出
       for (const extra of lines.slice(1)) {
         handleLine(extra);
@@ -350,6 +352,7 @@ export function parseLegacyBlocks(blocks: Block[], warningCount = 0): ImportResu
       continue;
     }
 
+    for (const image of images) appendStemHtml(image);
     for (const line of lines) handleLine(line);
   }
   flush();

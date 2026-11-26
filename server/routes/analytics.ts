@@ -169,6 +169,7 @@ function loadParticipants(exam: ExamRow, classIds: number[], studentIds: number[
      FROM submissions s
      JOIN users u ON u.id = s.student_id
      LEFT JOIN classes c ON c.id = u.class_id
+      LEFT JOIN exam_participants ep ON ep.exam_id = s.exam_id AND ep.student_id = s.student_id
      WHERE ${where.join(' AND ')}
      ORDER BY class_id, u.student_no, u.id`,
     ...params,

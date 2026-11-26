@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ROOT, all, get, nowIso, run, tx } from '../db.ts';
 import { HttpError, audit, loadOwnedExam, requireTeacher, type ExamRow } from '../http.ts';
 import { examSummary, loadQuestions, loadSections, loadTestCases, parseJson, toQuestionTeacher } from '../serialize.ts';
+import { sanitize, stripTags } from '../import/html.ts';
 import { parseExamDocx, type ImportFile } from '../import/docx.ts';
 import { enqueueGrading } from '../grading/worker.ts';
 import { examLifecycle, queueSubmission, reviewRequired, snapshotAudience } from '../exam-lifecycle.ts';
@@ -226,6 +227,7 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
   app.put('/teacher/exams/:id/questions', async (req) => {
     const user = requireTeacher(req);
     const exam = loadOwnedExam(user.id, Number((req.params as { id: string }).id));
+    if (exam.status !== 'draft') throw new HttpError(409, '已发布的试卷只允许预览');
     const parsed = questionsPayloadSchema.safeParse(req.body);
     if (!parsed.success) throw new HttpError(400, `题目数据不合法：${parsed.error.issues[0]?.message ?? ''}`);
 
@@ -235,7 +237,7 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
     tx(() => {
       run('DELETE FROM test_cases WHERE question_id IN (SELECT id FROM questions WHERE exam_id = ?)', exam.id);
       run('DELETE FROM questions WHERE exam_id = ?', exam.id);
-      run('UPDATE exams SET sections_json = ? WHERE id = ?', JSON.stringify(parsed.data.sections), exam.id);
+      run('UPDATE exams SET sections_json = ? WHERE id = ?', JSON.stringify(parsed.data.sections.map((section) => ({ ...section, html: sanitize(section.html) }))), exam.id);
 
       parsed.data.questions.forEach((q, i) => {
         const inserted = run(
@@ -244,11 +246,11 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
           exam.id,
           i + 1,
           q.type,
-          q.stemHtml,
+          sanitize(q.stemHtml),
           q.score,
           JSON.stringify(q.options),
           q.answer == null ? null : JSON.stringify(q.answer),
-          q.explanationHtml ?? null,
+          q.explanationHtml ? sanitize(q.explanationHtml) : null,
           q.codeSpec ? JSON.stringify(q.codeSpec) : null,
           q.sectionIndex ?? null,
           q.needsManual ? 1 : 0,
@@ -275,13 +277,54 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
     const qid = Number((req.params as { id: string }).id);
     const q = get<{ id: number; exam_id: number; score: number }>('SELECT id, exam_id, score FROM questions WHERE id = ?', qid);
     if (!q) throw new HttpError(404, '题目不存在');
-    loadOwnedExam(user.id, q.exam_id);
+    const owned = loadOwnedExam(user.id, q.exam_id);
+    if (owned.status !== 'draft') throw new HttpError(409, '已发布的试卷只允许预览');
 
-    const body = z.object({ score: z.number().positive().max(200) }).safeParse(req.body);
-    if (!body.success) throw new HttpError(400, '分值必须是 0-200 之间的数字');
-    run('UPDATE questions SET score = ? WHERE id = ?', body.data.score, qid);
-    audit(user.id, 'question', qid, 'update_score', { score: q.score }, { score: body.data.score });
-    return { ok: true };
+    const existing = loadQuestions(q.exam_id).find((item) => item.id === qid)!;
+    const question = toQuestionTeacher(existing, loadTestCases(q.exam_id).get(qid) ?? []);
+    const body = z.object({
+      stemHtml: z.string().max(18_000_000).optional(),
+      explanationHtml: z.string().max(4_000_000).nullable().optional(),
+      score: z.number().positive().max(200).optional(),
+      options: z.array(z.object({ key: z.string().min(1).max(24), text: z.string().trim().min(1).max(4000) })).max(80).optional(),
+      answer: z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('choice'), keys: z.array(z.string()).min(1).max(80), missedDeduct: z.number().nonnegative().optional() }),
+        z.object({ kind: z.literal('bool'), value: z.boolean() }),
+        z.object({ kind: z.literal('fill'), blanks: z.array(z.array(z.string().trim().min(1).max(4000)).max(30)).min(1).max(100), blankScores: z.array(z.number().nonnegative()).optional(), manualBlanks: z.array(z.boolean()).optional() }),
+        z.object({ kind: z.literal('reference'), text: z.string().trim().min(1).max(20000) }),
+        z.object({ kind: z.literal('none') }),
+      ]).optional(),
+    }).refine((value) => Object.keys(value).length > 0).safeParse(req.body);
+    if (!body.success) throw new HttpError(400, '题目字段不合法，分值须大于 0 且不超过 200');
+    const data = body.data;
+    const options = data.options ?? question.options;
+    const answer = data.answer ?? question.answer;
+    const score = data.score ?? question.score;
+    if (new Set(options.map((option) => option.key)).size !== options.length) throw new HttpError(400, '选项编号不能重复');
+    if (data.answer !== undefined || data.options !== undefined) {
+      const kindForType = { single: 'choice', multiple: 'choice', truefalse: 'bool', fill: 'fill', short: 'reference', code: 'reference' } as const;
+      if (answer && answer.kind !== kindForType[question.type] && !(answer.kind === 'none' && (question.type === 'short' || question.type === 'code'))) {
+        throw new HttpError(400, '参考答案与题型不匹配');
+      }
+      if (answer?.kind === 'choice' && (new Set(answer.keys).size !== answer.keys.length || answer.keys.some((key) => !options.some((option) => option.key === key)) || (question.type === 'single' && answer.keys.length !== 1))) {
+        throw new HttpError(400, '请从有效选项中选择参考答案');
+      }
+      if (answer?.kind === 'fill' && ((answer.manualBlanks && answer.manualBlanks.length !== answer.blanks.length) || (answer.blankScores && answer.blankScores.length !== answer.blanks.length))) {
+        throw new HttpError(400, '各空分值和人工评分标记须与空数一致');
+      }
+    }
+    if (answer?.kind === 'fill' && answer.blankScores && Math.abs(answer.blankScores.reduce((sum, value) => sum + value, 0) - score) > 0.01 && data.score !== undefined && data.score !== question.score) {
+      throw new HttpError(400, '这道题按空计分，逐空分值合计应等于总分');
+    }
+    const stem = data.stemHtml === undefined ? question.stemHtml : sanitize(data.stemHtml);
+    if (data.stemHtml !== undefined && !stripTags(stem).trim() && !/<img\b[^>]*\bsrc=/i.test(stem)) throw new HttpError(400, '请填写题干');
+    const explanation = data.explanationHtml === undefined ? question.explanationHtml : data.explanationHtml ? sanitize(data.explanationHtml) : null;
+    return tx(() => {
+      run('UPDATE questions SET stem_html = ?, explanation_html = ?, score = ?, options_json = ?, answer_json = ? WHERE id = ?',
+        stem, explanation, score, JSON.stringify(options), answer == null ? null : JSON.stringify(answer), qid);
+      audit(user.id, 'question', qid, 'edit_question', { score: question.score }, { score, fields: Object.keys(data) });
+      return { ok: true, question: toQuestionTeacher(loadQuestions(q.exam_id).find((item) => item.id === qid)!, question.testCases) };
+    });
   });
 
   app.delete('/teacher/questions/:id', async (req) => {
@@ -289,7 +332,8 @@ export async function teacherRoutes(app: FastifyInstance): Promise<void> {
     const qid = Number((req.params as { id: string }).id);
     const q = get<{ id: number; exam_id: number }>('SELECT id, exam_id FROM questions WHERE id = ?', qid);
     if (!q) throw new HttpError(404, '题目不存在');
-    loadOwnedExam(user.id, q.exam_id);
+    const owned = loadOwnedExam(user.id, q.exam_id);
+    if (owned.status !== 'draft') throw new HttpError(409, '已发布的试卷只允许预览');
     const submitted = get<{ c: number }>('SELECT COUNT(*) AS c FROM submissions WHERE exam_id = ?', q.exam_id)?.c ?? 0;
     if (submitted > 0) throw new HttpError(400, '已有学生提交，不能删除题目');
 
