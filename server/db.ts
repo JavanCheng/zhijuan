@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
   student_no TEXT,
   class_id INTEGER REFERENCES classes(id),
   phone TEXT,
+  teacher_password_state TEXT CHECK (teacher_password_state IN ('default', 'custom')),
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
@@ -130,6 +131,8 @@ ensureColumn('questions', 'section_index', 'section_index INTEGER');
 ensureColumn('questions', 'needs_manual', 'needs_manual INTEGER NOT NULL DEFAULT 0');
 // 教师用手机号作为登录账号（管理员在后台创建教师时录入）
 ensureColumn('users', 'phone', 'phone TEXT');
+// NULL deliberately means unknown; historical hashes are not classified or replaced.
+ensureColumn('users', 'teacher_password_state', "teacher_password_state TEXT CHECK (teacher_password_state IN ('default', 'custom'))");
 
 
 export function all<T = Record<string, unknown>>(sql: string, ...params: Param[]): T[] {

@@ -1,10 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Role } from '../../shared/types.ts';
-import { get } from '../db.ts';
-import { verifyPassword } from '../password.ts';
+import { get, run } from '../db.ts';
+import { hashPassword, verifyPassword } from '../password.ts';
 import { currentUser, type SessionUser } from '../auth.ts';
-import { HttpError } from '../http.ts';
+import { HttpError, requireTeacher } from '../http.ts';
 
 const accountLoginSchema = z.object({
   username: z.string().trim().min(1).max(80),
@@ -80,7 +80,7 @@ async function teacherLogin(req: FastifyRequest, reply: FastifyReply) {
   const row = get<UserRow>(
     `SELECT u.*, c.name AS class_name FROM users u
      LEFT JOIN classes c ON c.id = u.class_id
-     WHERE u.role = 'teacher' AND (u.username = ? OR u.phone = ?)
+     WHERE u.role = 'teacher' AND (u.phone = ? OR ((u.phone IS NULL OR trim(u.phone, char(9, 10, 11, 12, 13, 32)) = '') AND u.username = ?))
      LIMIT 1`,
     account,
     account,
@@ -123,6 +123,24 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post('/auth/admin/login', adminLogin);
   app.post('/auth/teacher/login', teacherLogin);
   app.post('/auth/student/login', studentLogin);
+  app.post('/auth/teacher/change-password', async (req) => {
+    const teacher = requireTeacher(req);
+    const parsed = z.object({
+      currentPassword: z.string().min(1).max(200),
+      newPassword: z.string().min(8).max(128).refine((value) => value.trim().length > 0),
+    }).safeParse(req.body);
+    if (!parsed.success) throw new HttpError(400, '请输入当前密码，新密码须为 8–128 个字符');
+    const { currentPassword, newPassword } = parsed.data;
+    const row = get<{ password_hash: string; phone: string | null }>(
+      "SELECT password_hash, phone FROM users WHERE id = ? AND role = 'teacher' AND is_active = 1", teacher.id,
+    );
+    if (!row || !verifyPassword(currentPassword, row.password_hash)) throw new HttpError(400, '当前密码不正确');
+    if (newPassword === currentPassword || (row.phone && newPassword.trim() === row.phone.trim())) {
+      throw new HttpError(400, '新密码不能与当前密码或手机号相同');
+    }
+    run("UPDATE users SET password_hash = ?, teacher_password_state = 'custom' WHERE id = ? AND role = 'teacher'", hashPassword(newPassword), teacher.id);
+    return { ok: true };
+  });
 
   app.post('/auth/logout', async (_req, reply) => {
     reply.clearCookie('sid', { path: '/' });

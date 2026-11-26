@@ -1,261 +1,170 @@
-/* ── 管理员概览 ─────────────────────────────────────── */
-.admin-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: 36px;
-  align-items: center;
-  padding: 24px 30px;
-  border: 1px solid var(--ui-border-default);
-  border-radius: var(--ui-radius-dialog);
-  background: var(--ui-surface-default);
-}
-
-.admin-overview-main {
+.teacher-accounts-page {
+  --teacher-list-padding: 18px;
+  max-width: 1200px;
   min-width: 0;
 }
 
-.admin-overview-head {
+.teacher-filters,
+.teacher-toolbar,
+.teacher-toolbar-end,
+.teacher-batch {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.admin-overview-badge {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
+.teacher-filters {
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.teacher-filters .ant-segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.teacher-filters .teacher-missing-toggle[aria-pressed='true'] {
+  border-color: var(--ui-action-primary);
+  color: var(--ui-action-primary);
+  background: var(--ui-accent-selected);
+}
+
+.teacher-toolbar {
+  margin-bottom: 12px;
+}
+
+.teacher-search {
+  width: min(100%, 292px);
+}
+
+.teacher-toolbar-end {
+  margin-inline-start: auto;
+}
+
+.teacher-result-count,
+.teacher-cell-detail,
+.teacher-identity > span:not(.pill),
+.teacher-batch > span {
+  color: var(--ui-content-secondary);
+  font-size: 12px;
+}
+
+.teacher-result-count,
+.teacher-cell-detail,
+.teacher-filters strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.teacher-inline-notice {
+  margin-bottom: 12px;
+}
+
+.teacher-batch {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-border-default);
   border-radius: var(--ui-radius-md);
   background: var(--ui-surface-subtle);
-  color: var(--ui-content-primary);
-  font-size: 14px;
 }
 
-.admin-overview-label {
-  color: var(--ui-content-secondary);
-  font-size: 12.5px;
-  font-weight: 500;
+.teacher-batch > strong {
+  margin-inline-end: 4px;
+  font-size: 12px;
 }
 
-.admin-overview-total {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  margin-top: 14px;
-}
-
-.admin-overview-total-value {
-  color: var(--ui-content-primary);
-  font-size: 50px;
-  font-weight: 650;
-  line-height: 1;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-}
-
-.admin-overview-total-unit {
-  color: var(--ui-content-tertiary);
-  font-size: 12.5px;
-  font-weight: 500;
-}
-
-.admin-overview-ring {
-  display: flex;
-  justify-content: center;
-}
-
-.admin-overview-ring .ant-progress-circle-path {
-  stroke-linecap: round;
-}
-
-.admin-overview-ring-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.admin-overview-ring-value {
-  color: var(--ui-content-primary);
-  font-size: 27px;
-  font-weight: 650;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.admin-overview-ring-value span {
-  margin-left: 2px;
-  color: var(--ui-content-tertiary);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.admin-overview-ring-label {
-  margin-top: 6px;
-  color: var(--ui-content-tertiary);
-  font-size: 10px;
-  letter-spacing: 0.16em;
-}
-
-.admin-overview-side {
-  display: grid;
-  gap: 10px;
-}
-
-.admin-overview-stat {
-  padding: 13px 15px;
+.teacher-table,
+.teacher-empty {
   border: 1px solid var(--ui-border-default);
   border-radius: var(--ui-radius-card);
-  background: var(--ui-background-muted);
 }
 
-.admin-overview-stat-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--ui-content-secondary);
-  font-size: 12.5px;
-  font-weight: 500;
-}
-
-.admin-overview-stat-head .anticon {
-  color: var(--ui-status-success-text);
-  font-size: 14px;
-}
-
-.admin-overview-stat.is-inactive .admin-overview-stat-head .anticon {
-  color: var(--ui-status-warning-text);
-}
-
-.admin-overview-stat-value {
-  margin-top: 8px;
-  color: var(--ui-content-primary);
-  font-size: 26px;
-  font-weight: 650;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.admin-overview-stat-value span {
-  margin-left: 4px;
-  color: var(--ui-content-tertiary);
-  font-size: 12.5px;
-  font-weight: 500;
-}
-
-.admin-overview-bar {
-  height: 3px;
-  margin-top: 9px;
+.teacher-table {
   overflow: hidden;
-  border-radius: var(--ui-radius-pill);
-  background: var(--ui-surface-subtle);
-}
-
-.admin-overview-bar span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--ui-status-success-accent);
-}
-
-.admin-overview-stat.is-inactive .admin-overview-bar span {
-  background: var(--ui-status-warning-accent);
-}
-
-@media (max-width: 1180px) {
-  .admin-overview {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 28px;
-  }
-
-  .admin-overview-side {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 767px) {
-  .admin-overview {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 22px;
-    padding: 22px 20px;
-  }
-
-  .admin-overview-ring {
-    justify-content: center;
-  }
-
-  .admin-overview-side {
-    grid-column: auto;
-  }
-
-  .admin-overview-total-value {
-    font-size: 46px;
-  }
-}
-
-@media (max-width: 460px) {
-  .admin-overview-side {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* ── 管理员教师列表 ─────────────────────────────────── */
-/* 表格放在带边框的圆角容器里，与卡片留白、表头圆角保持一致 */
-.teacher-table .ant-table {
-  border-radius: var(--ui-radius-card);
 }
 
 .teacher-table .ant-table-pagination.ant-pagination {
-  margin: 12px 16px;
+  margin: 12px;
 }
 
-/* 批量操作浮层：固定在视口底部，不参与文档流，选择行时表格不会抖动 */
-.batch-dock {
-  position: fixed;
-  left: 50%;
-  bottom: 28px;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 9px 12px 9px 16px;
-  border: 1px solid var(--ui-border-strong);
-  border-radius: var(--ui-radius-card);
-  background: var(--ui-surface-default);
-  transform: translateX(-50%);
+.teacher-identity {
+  display: grid;
+  justify-items: start;
+  gap: 1px;
+  overflow-wrap: anywhere;
 }
 
-.batch-dock-count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 24px;
-  height: 24px;
-  padding: 0 7px;
-  border-radius: var(--ui-radius-pill);
-  background: var(--ui-action-primary);
-  color: var(--ui-content-on-action);
-  font-size: 12px;
-  font-weight: 600;
+.teacher-login {
   font-variant-numeric: tabular-nums;
 }
 
-.batch-dock-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.teacher-identity .teacher-activity-compact {
+  display: none;
 }
 
-@media (max-width: 640px) {
-  .batch-dock {
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
-    flex-wrap: wrap;
-    gap: 8px;
-    transform: none;
+.teacher-table .teacher-state-cell,
+.teacher-table .teacher-activity-cell,
+.teacher-table .teacher-created-cell,
+.teacher-table .teacher-actions-cell {
+  width: 14%;
+  white-space: nowrap;
+}
+
+.teacher-row-actions {
+  display: flex;
+  align-items: center;
+}
+
+.teacher-table .teacher-row-actions > .ant-btn-link {
+  padding-inline: 2px;
+}
+
+.teacher-empty {
+  border-style: dashed;
+  background: var(--ui-surface-subtle);
+}
+
+@media (max-width: 980px) {
+  .teacher-table .ant-table-cell.teacher-created-cell {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .teacher-accounts-page {
+    --teacher-list-padding: 12px;
   }
 
-  .batch-dock-actions {
-    margin-left: auto;
+  .teacher-table .ant-table-cell.teacher-activity-cell {
+    display: none;
   }
+
+  .teacher-identity .teacher-activity-compact {
+    display: inline;
+  }
+}
+
+@media (max-width: 420px) {
+  .teacher-search {
+    width: 100%;
+  }
+
+  .teacher-table .ant-table-wrapper .ant-table.ant-table-small .ant-table-cell {
+    padding-inline: 5px;
+  }
+}
+
+.teacher-table .teacher-identity-cell { width: 26%; }
+.teacher-table .teacher-password-cell { width: 21%; }
+.teacher-table .teacher-actions-cell { width: 12%; }
+.teacher-table .teacher-created-cell { width: 17%; }
+.teacher-table .ant-table-thead > tr > th { font-size: 12px; }
+.teacher-table .ant-table-tbody > tr:nth-child(even) > td:not(.ant-table-cell-row-hover) { background: var(--ui-surface-subtle); }
+.teacher-table .ant-table-tbody > tr > td { vertical-align: middle; }
+.teacher-password { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 5px; }
+.teacher-password-mask { font-variant-numeric: tabular-nums; letter-spacing: 0.03em; white-space: nowrap; }
+.teacher-password-status { flex-basis: 100%; color: var(--ui-content-secondary); font-size: 11px; }
+@media (max-width: 620px) {
+  .teacher-table .teacher-identity-cell { width: auto; }
+  .teacher-table .teacher-state-cell, .teacher-table .teacher-actions-cell, .teacher-table .teacher-password-cell { width: 1%; }
 }

@@ -6,6 +6,7 @@ import {
   DashboardOutlined,
   CloseOutlined,
   DownloadOutlined,
+  LockOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -21,6 +22,8 @@ import { useFavicon } from './favicon';
 import { ThemeControl } from './appearance';
 import { AdminLogin, LoginChooser, StudentLogin, TeacherLogin } from './pages/Login';
 import { AdminTeachers } from './pages/admin/Teachers';
+import { AdminWorkbenchPage } from './pages/admin/Workbench';
+import { ChangePasswordDialog } from './pages/teacher/ChangePassword';
 import { TeacherHome } from './pages/teacher/Home';
 import { TeacherExam } from './pages/teacher/ExamDetail';
 import { TeacherGrading } from './pages/teacher/Grading';
@@ -54,17 +57,22 @@ function teacherSection(pathname: string): string {
 }
 
 const ADMIN_NAV = [
-  { to: '/admin', end: true, label: '教师账号', icon: <UserSwitchOutlined /> },
+  { to: '/admin', end: true, label: '工作台', icon: <DashboardOutlined /> },
+  { to: '/admin/teachers', end: true, label: '教师账号', icon: <UserSwitchOutlined /> },
 ];
 
-function UserMenu({ name, subtitle, onLogout }: { name?: string; subtitle: string; onLogout: () => Promise<void> }) {
+function UserMenu({ name, subtitle, onLogout, onChangePassword }: { name?: string; subtitle: string; onLogout: () => Promise<void>; onChangePassword?: () => void }) {
   const [open, setOpen] = useState(false);
   const { message } = AntApp.useApp();
   return (
     <Dropdown open={open} onOpenChange={setOpen} trigger={['click']} autoFocus menu={{
-      items: [{ key: 'logout', label: '退出登录', icon: <LogoutOutlined />, danger: true }],
+      items: [
+        ...(onChangePassword ? [{ key: 'password', label: '修改密码', icon: <LockOutlined /> }] : []),
+        { key: 'logout', label: '退出登录', icon: <LogoutOutlined />, danger: true },
+      ],
       onClick: ({ key }) => {
         setOpen(false);
+        if (key === 'password') onChangePassword?.();
         if (key === 'logout') {
           void onLogout().catch((error: unknown) => {
             void message.error(error instanceof Error ? error.message : '退出登录失败');
@@ -88,6 +96,7 @@ function WorkspaceShell({ admin = false }: { admin?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   useFavicon(admin ? 'purple' : 'blue');
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [mobile, setMobile] = useState(() => matchMedia('(width < 992px)').matches);
   const [collapsed, setCollapsed] = useState(() => matchMedia('(width < 992px)').matches);
   const toggleRef = useRef<HTMLButtonElement | HTMLAnchorElement>(null);
@@ -119,7 +128,9 @@ function WorkspaceShell({ admin = false }: { admin?: boolean }) {
   }, [location.pathname, mobile]);
 
   const role = admin ? 'admin' : 'teacher';
-  const section = admin ? '教师账号' : teacherSection(location.pathname);
+  const section = admin
+    ? (location.pathname.startsWith('/admin/teachers') ? '教师账号' : '工作台')
+    : teacherSection(location.pathname);
   const navigation = admin ? ADMIN_NAV : TEACHER_NAV;
   const workplace = admin ? '管理员工作台' : '教师工作台';
 
@@ -188,10 +199,11 @@ function WorkspaceShell({ admin = false }: { admin?: boolean }) {
           </div>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <ThemeControl />
-            <UserMenu name={admin ? 'Admin' : user?.name} subtitle={admin ? '管理员' : '教师'} onLogout={signOut} />
+            <UserMenu name={admin ? 'Admin' : user?.name} subtitle={admin ? '管理员' : '教师'} onLogout={signOut} onChangePassword={admin ? undefined : () => setPasswordOpen(true)} />
           </div>
         </Layout.Header>
         <Layout.Content><Outlet /></Layout.Content>
+        {passwordOpen && !admin ? <ChangePasswordDialog onClose={() => setPasswordOpen(false)} /> : null}
       </Layout>
     </div>
   );
@@ -257,7 +269,8 @@ export function App() {
           </RequireRole>
         }
       >
-        <Route index element={<AdminTeachers />} />
+        <Route index element={<AdminWorkbenchPage />} />
+        <Route path="teachers" element={<AdminTeachers />} />
       </Route>
 
       <Route

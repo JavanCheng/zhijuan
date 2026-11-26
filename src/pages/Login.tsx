@@ -30,8 +30,8 @@ const WORKSPACE: Record<LoginVariant, string> = {
 /** 账号输入框旁的帮助说明：悬停或聚焦问号查看 */
 const TEACHER_ACCOUNT_TIPS = (
   <ul className="m-0 list-disc space-y-1 pl-4 text-left">
-    <li>教师账号由管理员统一创建，初始密码为手机号</li>
-    <li>忘记密码请联系管理员重置</li>
+    <li>使用管理员登记的手机号登录，初始密码也是该手机号</li>
+    <li>登录后可在右上角账户菜单修改密码；忘记密码请联系管理员重置</li>
   </ul>
 );
 
@@ -196,7 +196,7 @@ export function TeacherLogin() {
               size="large"
               autoComplete="username"
               prefix={<UserOutlined className="text-ui-tertiary" />}
-              placeholder="请输入账号"
+              placeholder="请输入登录手机号"
               autoFocus
             />
           </Form.Item>

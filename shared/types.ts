@@ -480,12 +480,25 @@ export interface RosterImportResult {
 
 /* ── 管理员：教师账号 ─────────────────────────────────── */
 
+export type TeacherPasswordState = 'default' | 'custom' | 'unknown';
+
+export interface ChangeTeacherPasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ChangeTeacherPasswordResult {
+  ok: true;
+}
+
 export interface ManagedTeacher {
   id: number;
-  /** 登录账号：新教师就是手机号；历史账号可能仍是旧用户名 */
+  /** 已绑定时为手机号，仅未绑定的历史账号仍可使用旧用户名。 */
   username: string;
   name: string;
   phone: string | null;
+  /** 仅表示密码来源。仅 default 状态的密码可由已知手机号推导。 */
+  passwordState: TeacherPasswordState;
   isActive: boolean;
   createdAt: string;
   examCount: number;
@@ -499,6 +512,31 @@ export interface TeacherOverview {
   inactive: number;
   withExams: number;
   examCount: number;
+}
+
+export type AdminTeacherAction =
+  | 'create_teacher'
+  | 'update_teacher'
+  | 'enable_teacher'
+  | 'disable_teacher'
+  | 'reset_teacher_password'
+  | 'delete_teacher'
+  | 'batch_enable_teacher'
+  | 'batch_disable_teacher'
+  | 'batch_delete_teacher';
+
+export interface AdminRecentAction {
+  id: number;
+  action: AdminTeacherAction;
+  actorName: string | null;
+  teacherName: string | null;
+  affectedCount?: number;
+  createdAt: string;
+}
+
+export interface AdminWorkbench {
+  missingPhoneCount: number;
+  recentActions: AdminRecentAction[];
 }
 
 export interface DeleteTeacherResult {
